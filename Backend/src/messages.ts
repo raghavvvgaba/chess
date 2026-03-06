@@ -1,3 +1,12 @@
 export const INIT_GAME = "init_game"
 export const MOVE = "move";
 export const GAME_OVER = "game_over";
+export const WAITING_FOR_OPPONENT = "waiting_for_opponent";
+export const ALREADY_WAITING = "already_waiting";
+export const CANCEL_MATCHMAKING = "cancel_matchmaking";
+export const MATCHMAKING_CANCELLED = "matchmaking_cancelled";
+export const MOVE_APPLIED = "move_applied";
+export const MOVE_REJECTED = "move_rejected";
+export const REMATCH_REQUEST = "rematch_request";
+export const REMATCH_STATE = "rematch_state";
+export const REMATCH_DECLINED = "rematch_declined";
