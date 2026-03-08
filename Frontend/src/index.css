@@ -1,3 +1,86 @@
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --landing-bg: #141210;
+  --landing-sand: #d2a572;
+  --landing-cream: #fff6e9;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--landing-bg);
+  color: var(--landing-cream);
+  font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+.font-display {
+  font-family: "Cinzel", "Times New Roman", serif;
+}
+
+.landing-page {
+  background:
+    radial-gradient(circle at 12% 18%, rgba(210, 165, 114, 0.18), transparent 45%),
+    radial-gradient(circle at 86% 16%, rgba(176, 208, 137, 0.16), transparent 48%),
+    linear-gradient(135deg, #151311 0%, #120f0d 42%, #1a1511 100%);
+}
+
+.landing-page__mesh {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 246, 233, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 246, 233, 0.03) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: radial-gradient(circle at center, black 22%, transparent 88%);
+  opacity: 0.45;
+}
+
+.landing-page__grain {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.08) 0.5px, transparent 1px);
+  background-size: 3px 3px;
+  opacity: 0.09;
+  pointer-events: none;
+}
+
+.landing-orb {
+  animation: drift 7s ease-in-out infinite;
+}
+
+.auth-page {
+  background:
+    radial-gradient(circle at 14% 12%, rgba(210, 165, 114, 0.2), transparent 42%),
+    radial-gradient(circle at 82% 82%, rgba(144, 182, 120, 0.14), transparent 38%),
+    linear-gradient(145deg, #15120f 0%, #110f0d 50%, #1a1511 100%);
+}
+
+.auth-page__mesh {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 246, 233, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 246, 233, 0.028) 1px, transparent 1px);
+  background-size: 30px 30px;
+  mask-image: radial-gradient(circle at center, black 35%, transparent 88%);
+  opacity: 0.5;
+}
+
+@keyframes drift {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-9px);
+  }
+}

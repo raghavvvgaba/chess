@@ -226,7 +226,9 @@ export class Game {
             payload: {
                 color: "white",
                 fen: initialFen,
-                turn: initialTurn
+                turn: initialTurn,
+                playerName: this.whitePlayer.userName,
+                opponentName: this.blackPlayer.userName
             }
         });
         this.sendToSocket(this.blackPlayer, {
@@ -234,7 +236,9 @@ export class Game {
             payload: {
                 color: "black",
                 fen: initialFen,
-                turn: initialTurn
+                turn: initialTurn,
+                playerName: this.blackPlayer.userName,
+                opponentName: this.whitePlayer.userName
             }
         });
     }

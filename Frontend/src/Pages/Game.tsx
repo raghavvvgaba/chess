@@ -82,6 +82,14 @@ const DEFAULT_PENDING_PROMOTION: PendingPromotion = {
     availablePromotions: []
 };
 
+const getPlayerDisplayName = (value: unknown, fallback: string) => {
+    if (typeof value !== "string") {
+        return fallback;
+    }
+    const trimmedValue = value.trim();
+    return trimmedValue.length ? trimmedValue : fallback;
+};
+
 const getSquareFromCoordinates = (row: number, col: number): Square => {
     return `${String.fromCharCode(97 + col)}${8 - row}` as Square;
 };
@@ -116,6 +124,8 @@ function Game() {
     const [currentFen, setCurrentFen] = useState<string>(chessRef.current.fen());
     const [lastMove, setLastMove] = useState<LastMove>(null);
     const [checkedKingSquare, setCheckedKingSquare] = useState<Square | null>(null);
+    const [myPlayerName, setMyPlayerName] = useState("User 1");
+    const [opponentPlayerName, setOpponentPlayerName] = useState("User 2");
     const [matchConclusion, setMatchConclusion] = useState<MatchConclusion>(DEFAULT_MATCH_CONCLUSION);
     const [moveHistory, setMoveHistory] = useState<MoveHistoryEntry[]>([]);
     const [pendingPromotion, setPendingPromotion] = useState<PendingPromotion>(DEFAULT_PENDING_PROMOTION);
@@ -172,6 +182,8 @@ function Game() {
                     setStatusMessage("");
                     setCancelRequested(false);
                     setPlayerColor(message.payload?.color === "black" ? "black" : "white");
+                    setMyPlayerName(getPlayerDisplayName(message.payload?.playerName, "User 1"));
+                    setOpponentPlayerName(getPlayerDisplayName(message.payload?.opponentName, "User 2"));
                     setMatchConclusion(DEFAULT_MATCH_CONCLUSION);
                     setLastMove(null);
                     setMoveHistory([]);
@@ -183,6 +195,8 @@ function Game() {
                     setCancelRequested(false);
                     setCurrentTurn(null);
                     setCheckedKingSquare(null);
+                    setMyPlayerName("User 1");
+                    setOpponentPlayerName("User 2");
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
                     break;
                 case ALREADY_WAITING:
@@ -191,6 +205,8 @@ function Game() {
                     setCancelRequested(false);
                     setCurrentTurn(null);
                     setCheckedKingSquare(null);
+                    setMyPlayerName("User 1");
+                    setOpponentPlayerName("User 2");
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
                     break;
                 case MATCHMAKING_CANCELLED:
@@ -201,6 +217,8 @@ function Game() {
                     setCurrentTurn(null);
                     setCheckedKingSquare(null);
                     setLastMove(null);
+                    setMyPlayerName("User 1");
+                    setOpponentPlayerName("User 2");
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
                     navigate("/");
                     break;
@@ -538,6 +556,8 @@ function Game() {
         setCurrentTurn(null);
         setCheckedKingSquare(null);
         setLastMove(null);
+        setMyPlayerName("User 1");
+        setOpponentPlayerName("User 2");
         setPendingPromotion(DEFAULT_PENDING_PROMOTION);
     };
 
@@ -557,6 +577,8 @@ function Game() {
         setCurrentTurn(null);
         setCheckedKingSquare(null);
         setLastMove(null);
+        setMyPlayerName("User 1");
+        setOpponentPlayerName("User 2");
         setPendingPromotion(DEFAULT_PENDING_PROMOTION);
         navigate("/", { replace: true });
     };
@@ -632,7 +654,7 @@ function Game() {
                             )}
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="text-white text-sm sm:text-base font-semibold truncate">User 2</p>
+                            <p className="text-white text-sm sm:text-base font-semibold truncate">{opponentPlayerName}</p>
                             <p className="text-gray-400 text-xs truncate">{playerColor === "white" ? "Black" : "White"}</p>
                         </div>
                         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -669,7 +691,7 @@ function Game() {
                             )}
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="text-white text-sm sm:text-base font-semibold truncate">User 1</p>
+                            <p className="text-white text-sm sm:text-base font-semibold truncate">{myPlayerName}</p>
                             <p className="text-gray-400 text-xs truncate">{playerColor === "black" ? "Black" : "White"}</p>
                         </div>
                         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">

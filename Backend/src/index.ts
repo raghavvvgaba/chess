@@ -63,7 +63,10 @@ async function bootstrap() {
 
             wss.handleUpgrade(request, socket, head, (ws) => {
                 const authedSocket = ws as AuthenticatedSocket;
+                const preferredName = typeof session.user.name === "string" ? session.user.name.trim() : "";
+                const fallbackName = typeof session.user.email === "string" ? session.user.email.trim().split("@")[0] : "";
                 authedSocket.userId = session.user.id;
+                authedSocket.userName = preferredName || fallbackName || "";
                 wss.emit("connection", authedSocket, request);
             });
         } catch (error) {
