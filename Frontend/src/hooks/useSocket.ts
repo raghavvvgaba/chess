@@ -2,25 +2,21 @@ import { useState, useEffect } from 'react'
 
 function useSocket() {
     const [socket, setSocket] = useState<WebSocket | null>(null)
-    const WS_URL = "ws://localhost:8080"
+    const WS_URL = import.meta.env.VITE_WS_URL ?? "ws://localhost:8080/ws"
 
     useEffect(() => {
         const ws = new WebSocket(WS_URL);
-        console.log("WebSocket created");
         setSocket(ws)
         ws.onopen = () => {
-            console.log("WebSocket open");
             setSocket(ws);
         }
         ws.onclose = () => {
-            console.log("WebSocket closed");
             setSocket(null);
         }
         return () => {
-            console.log("WebSocket cleanup/close");
             ws.close();
         }
-    }, [])
+    }, [WS_URL])
 
     return socket
 }

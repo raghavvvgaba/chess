@@ -1,6 +1,8 @@
 import { WebSocket } from "ws";
 import { Chess } from "chess.js";
-import { GAME_OVER, INIT_GAME, MOVE_APPLIED, MOVE_REJECTED, REMATCH_DECLINED, REMATCH_STATE } from "./messages";
+import { GAME_OVER, INIT_GAME, MOVE_APPLIED, MOVE_REJECTED, REMATCH_DECLINED, REMATCH_STATE } from "./messages.js";
+import { finishGame as finishGameInStore, saveMove } from "./gameStore.js";
+import type { AuthenticatedSocket } from "./socketTypes.js";
 
 type MoveRejectedReason = "not_your_turn" | "illegal_move";
 type ResultType = "checkmate" | "draw" | "opponent_left";
@@ -15,40 +17,67 @@ type ResultReason =
 type WinnerColor = "white" | "black" | null;
 type RematchStatus = "waiting" | "starting";
 type PlayerColor = "white" | "black";
+type PromotionPiece = "q" | "r" | "b" | "n";
 
 export class Game {
-    public player1: WebSocket;
-    public player2: WebSocket;
+    public player1: AuthenticatedSocket;
+    public player2: AuthenticatedSocket;
     public board: Chess;
     private startTime: Date;
-    private whitePlayer: WebSocket;
-    private blackPlayer: WebSocket;
+    private whitePlayer: AuthenticatedSocket;
+    private blackPlayer: AuthenticatedSocket;
     private isConcluded = false;
     private rematchRequestedByWhite = false;
     private rematchRequestedByBlack = false;
+    private ply = 0;
+    private readonly gameId: string;
 
-    constructor(player1: WebSocket, player2: WebSocket) {
+    constructor(player1: AuthenticatedSocket, player2: AuthenticatedSocket, gameId: string) {
         this.player1 = player1;
         this.player2 = player2;
         this.whitePlayer = player1;
         this.blackPlayer = player2;
         this.board = new Chess();
         this.startTime = new Date();
+        this.gameId = gameId;
         this.sendInitGameMessages();
     }
 
-    containsPlayer(socket: WebSocket) {
+    containsPlayer(socket: AuthenticatedSocket) {
         return this.player1 === socket || this.player2 === socket;
     }
 
-    makeMove(socket: WebSocket, move: {
-        from: string,
-        to: string,
-        promotion?: string
-    }) {
+    makeMove(socket: AuthenticatedSocket, move: unknown) {
         if (this.isConcluded) {
             this.sendMoveRejected(socket, "illegal_move");
             return;
+        }
+
+        if (typeof move !== "object" || move === null) {
+            this.sendMoveRejected(socket, "illegal_move");
+            return;
+        }
+
+        const maybeMove = move as { from?: unknown; to?: unknown; promotion?: unknown };
+        if (typeof maybeMove.from !== "string" || typeof maybeMove.to !== "string") {
+            this.sendMoveRejected(socket, "illegal_move");
+            return;
+        }
+        if (typeof maybeMove.promotion !== "undefined" && !this.isPromotionPiece(maybeMove.promotion)) {
+            this.sendMoveRejected(socket, "illegal_move");
+            return;
+        }
+
+        const validatedMove: {
+            from: string;
+            to: string;
+            promotion?: PromotionPiece;
+        } = {
+            from: maybeMove.from,
+            to: maybeMove.to,
+        };
+        if (typeof maybeMove.promotion !== "undefined") {
+            validatedMove.promotion = maybeMove.promotion;
         }
 
         const turnPlayer = this.board.turn() === "w" ? this.whitePlayer : this.blackPlayer;
@@ -60,15 +89,17 @@ export class Game {
         let appliedMove: {
             from: string;
             to: string;
-            promotion?: string;
+            promotion?: PromotionPiece;
+            san: string;
         } | null = null;
         try {
-            const result = this.board.move(move);
+            const result = this.board.move(validatedMove);
             if (result) {
                 appliedMove = {
                     from: result.from,
                     to: result.to,
-                    promotion: result.promotion
+                    promotion: this.isPromotionPiece(result.promotion) ? result.promotion : undefined,
+                    san: result.san
                 };
             }
         } catch (e) {
@@ -82,14 +113,28 @@ export class Game {
             return;
         }
 
+        this.ply += 1;
         const moveAppliedPayload = {
             move: appliedMove,
             fen: this.board.fen(),
-            turn: this.board.turn()
+            turn: this.board.turn(),
+            san: appliedMove.san,
+            ply: this.ply
         };
         this.sendToBoth({
             type: MOVE_APPLIED,
             payload: moveAppliedPayload
+        });
+        const uci = `${appliedMove.from}${appliedMove.to}${appliedMove.promotion ?? ""}`;
+        void saveMove({
+            gameId: this.gameId,
+            ply: this.ply,
+            san: appliedMove.san,
+            uci,
+            fenAfter: this.board.fen(),
+            playedByUserId: socket.userId
+        }).catch((error) => {
+            console.error("Failed to persist move:", error);
         });
 
         if (this.board.isGameOver()) {
@@ -98,7 +143,11 @@ export class Game {
         }
     }
 
-    requestRematch(socket: WebSocket) {
+    private isPromotionPiece(value: unknown): value is PromotionPiece {
+        return value === "q" || value === "r" || value === "b" || value === "n";
+    }
+
+    requestRematch(socket: AuthenticatedSocket) {
         if (!this.isConcluded) {
             return;
         }
@@ -123,7 +172,7 @@ export class Game {
         this.sendRematchState("waiting");
     }
 
-    handleDisconnect(socket: WebSocket) {
+    handleDisconnect(socket: AuthenticatedSocket) {
         if (!this.containsPlayer(socket)) {
             return;
         }
@@ -165,6 +214,7 @@ export class Game {
         this.isConcluded = false;
         this.rematchRequestedByWhite = false;
         this.rematchRequestedByBlack = false;
+        this.ply = 0;
         this.sendInitGameMessages();
     }
 
@@ -259,6 +309,14 @@ export class Game {
             type: GAME_OVER,
             payload
         });
+
+        void finishGameInStore({
+            gameId: this.gameId,
+            status: "finished",
+            result: this.getResultForPersistence(payload.winnerColor)
+        }).catch((error) => {
+            console.error("Failed to persist game result:", error);
+        });
     }
 
     private sendRematchState(status: RematchStatus) {
@@ -272,7 +330,7 @@ export class Game {
         });
     }
 
-    private sendMoveRejected(socket: WebSocket, reason: MoveRejectedReason) {
+    private sendMoveRejected(socket: AuthenticatedSocket, reason: MoveRejectedReason) {
         this.sendToSocket(socket, {
             type: MOVE_REJECTED,
             payload: {
@@ -283,7 +341,7 @@ export class Game {
         });
     }
 
-    private getColorForSocket(socket: WebSocket): PlayerColor | null {
+    private getColorForSocket(socket: AuthenticatedSocket): PlayerColor | null {
         if (socket === this.whitePlayer) {
             return "white";
         }
@@ -298,9 +356,19 @@ export class Game {
         this.sendToSocket(this.player2, message);
     }
 
-    private sendToSocket(socket: WebSocket, message: object) {
+    private sendToSocket(socket: AuthenticatedSocket, message: object) {
         if (socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify(message));
         }
+    }
+
+    private getResultForPersistence(winnerColor: WinnerColor): "white" | "black" | "draw" {
+        if (winnerColor === "white") {
+            return "white";
+        }
+        if (winnerColor === "black") {
+            return "black";
+        }
+        return "draw";
     }
 }

@@ -1,11 +1,12 @@
-import { WebSocket } from "ws";
-import { ALREADY_WAITING, CANCEL_MATCHMAKING, INIT_GAME, MATCHMAKING_CANCELLED, MOVE, MOVE_REJECTED, REMATCH_DECLINED, REMATCH_REQUEST, WAITING_FOR_OPPONENT } from "./messages";
-import { Game } from "./Game";
+import { ALREADY_WAITING, CANCEL_MATCHMAKING, INIT_GAME, MATCHMAKING_CANCELLED, MOVE, MOVE_REJECTED, REMATCH_DECLINED, REMATCH_REQUEST, WAITING_FOR_OPPONENT } from "./messages.js";
+import { Game } from "./Game.js";
+import { createGame } from "./gameStore.js";
+import type { AuthenticatedSocket } from "./socketTypes.js";
 
 export class GameManager {
     private games: Game[];
-    private pendingUser: WebSocket | null;
-    private users: WebSocket[];
+    private pendingUser: AuthenticatedSocket | null;
+    private users: AuthenticatedSocket[];
 
     constructor() {
         this.games = [];
@@ -13,12 +14,12 @@ export class GameManager {
         this.users = [];
     }
 
-    addUser(socket: WebSocket) {
+    addUser(socket: AuthenticatedSocket) {
         this.users.push(socket);
         this.addHandler(socket);
 
     }
-    removeUser(socket: WebSocket) {
+    removeUser(socket: AuthenticatedSocket) {
         this.users = this.users.filter(user => user !== socket);
         if (this.pendingUser === socket) {
             this.pendingUser = null;
@@ -30,8 +31,8 @@ export class GameManager {
         }
         // stop the game here because user left
     }
-    private addHandler(socket: WebSocket) {
-        socket.on("message", (data) => {
+    private addHandler(socket: AuthenticatedSocket) {
+        socket.on("message", async (data) => {
             const message = JSON.parse(data.toString());
             if (message.type === INIT_GAME) {
                 if (this.pendingUser === socket) {
@@ -41,9 +42,24 @@ export class GameManager {
                     return;
                 }
                 if (this.pendingUser) {
-                    const game = new Game(this.pendingUser, socket);
-                    this.games.push(game);
+                    const waitingPlayer = this.pendingUser;
                     this.pendingUser = null;
+                    try {
+                        const persistedGame = await createGame({
+                            whiteUserId: waitingPlayer.userId,
+                            blackUserId: socket.userId
+                        });
+                        const game = new Game(waitingPlayer, socket, persistedGame.id);
+                        this.games.push(game);
+                    } catch (error) {
+                        console.error("Failed to create game row:", error);
+                        waitingPlayer.send(JSON.stringify({
+                            type: MATCHMAKING_CANCELLED
+                        }));
+                        socket.send(JSON.stringify({
+                            type: MATCHMAKING_CANCELLED
+                        }));
+                    }
                 } else {
                     this.pendingUser = socket;
                     socket.send(JSON.stringify({
@@ -62,7 +78,7 @@ export class GameManager {
             if (message.type === MOVE) {
                 const game = this.games.find(game => game.player1 === socket || game.player2 === socket);
                 if (game) {
-                    game.makeMove(socket, message.payload.move);
+                    game.makeMove(socket, message?.payload?.move);
                 } else {
                     socket.send(JSON.stringify({
                         type: MOVE_REJECTED,
