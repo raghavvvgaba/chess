@@ -1,6 +1,6 @@
 import { pool } from "./db.js";
 
-type GameStatus = "waiting" | "active" | "finished" | "aborted";
+type GameStatus = "active" | "finished" | "aborted";
 type GameResult = "white" | "black" | "draw" | null;
 
 type CreateGameInput = {

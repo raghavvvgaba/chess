@@ -1,13 +1,14 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+CREATE TYPE game_status AS ENUM ('active', 'finished', 'aborted');
+CREATE TYPE game_result AS ENUM ('white', 'black', 'draw');
+
 CREATE TABLE IF NOT EXISTS games (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   white_user_id TEXT NOT NULL REFERENCES "user"(id),
   black_user_id TEXT NOT NULL REFERENCES "user"(id),
-  status TEXT NOT NULL DEFAULT 'active'
-    CHECK (status IN ('waiting', 'active', 'finished', 'aborted')),
-  result TEXT
-    CHECK (result IN ('white', 'black', 'draw')),
+  status game_status NOT NULL DEFAULT 'active',
+  result game_result,
   started_at TIMESTAMPTZ,
   ended_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
