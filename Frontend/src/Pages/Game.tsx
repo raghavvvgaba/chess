@@ -157,6 +157,9 @@ function Game() {
             if (reason === "opponent_disconnected") {
                 return "Rematch unavailable. Opponent disconnected.";
             }
+            if (reason === "failed_to_start") {
+                return "Rematch could not start. Please try again.";
+            }
             if (reason === "expired") {
                 return "Rematch request expired.";
             }

@@ -29,10 +29,17 @@ export class Game {
     private isConcluded = false;
     private rematchRequestedByWhite = false;
     private rematchRequestedByBlack = false;
+    private rematchStarting = false;
     private ply = 0;
     private readonly gameId: string;
+    private readonly onRematchReady: (game: Game) => Promise<void>;
 
-    constructor(player1: AuthenticatedSocket, player2: AuthenticatedSocket, gameId: string) {
+    constructor(
+        player1: AuthenticatedSocket,
+        player2: AuthenticatedSocket,
+        gameId: string,
+        onRematchReady: (game: Game) => Promise<void>
+    ) {
         this.player1 = player1;
         this.player2 = player2;
         this.whitePlayer = player1;
@@ -40,6 +47,7 @@ export class Game {
         this.board = new Chess();
         this.startTime = new Date();
         this.gameId = gameId;
+        this.onRematchReady = onRematchReady;
         this.sendInitGameMessages();
     }
 
@@ -164,12 +172,40 @@ export class Game {
         }
 
         if (this.rematchRequestedByWhite && this.rematchRequestedByBlack) {
-            this.sendRematchState("starting");
-            this.startRematchWithSwappedColors();
+            if (this.rematchStarting) {
+                return;
+            }
+            this.rematchStarting = true;
+            void this.onRematchReady(this);
             return;
         }
 
         this.sendRematchState("waiting");
+    }
+
+    getWhitePlayer() {
+        return this.whitePlayer;
+    }
+
+    getBlackPlayer() {
+        return this.blackPlayer;
+    }
+
+    handleRematchStartFailed() {
+        if (!this.isConcluded) {
+            return;
+        }
+
+        this.rematchStarting = false;
+        this.rematchRequestedByWhite = false;
+        this.rematchRequestedByBlack = false;
+        this.sendToBoth({
+            type: REMATCH_DECLINED,
+            payload: {
+                by: "system",
+                reason: "failed_to_start"
+            }
+        });
     }
 
     handleDisconnect(socket: AuthenticatedSocket) {
@@ -203,19 +239,6 @@ export class Game {
             fen: this.board.fen(),
             turn: null
         });
-    }
-
-    private startRematchWithSwappedColors() {
-        const previousWhitePlayer = this.whitePlayer;
-        this.whitePlayer = this.blackPlayer;
-        this.blackPlayer = previousWhitePlayer;
-        this.board = new Chess();
-        this.startTime = new Date();
-        this.isConcluded = false;
-        this.rematchRequestedByWhite = false;
-        this.rematchRequestedByBlack = false;
-        this.ply = 0;
-        this.sendInitGameMessages();
     }
 
     private sendInitGameMessages() {
@@ -306,6 +329,7 @@ export class Game {
         turn: "w" | "b" | null;
     }) {
         this.isConcluded = true;
+        this.rematchStarting = false;
         this.rematchRequestedByWhite = false;
         this.rematchRequestedByBlack = false;
 

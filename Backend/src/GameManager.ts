@@ -49,7 +49,12 @@ export class GameManager {
                             whiteUserId: waitingPlayer.userId,
                             blackUserId: socket.userId
                         });
-                        const game = new Game(waitingPlayer, socket, persistedGame.id);
+                        const game = new Game(
+                            waitingPlayer,
+                            socket,
+                            persistedGame.id,
+                            async (currentGame) => this.startRematch(currentGame)
+                        );
                         this.games.push(game);
                     } catch (error) {
                         console.error("Failed to create game row:", error);
@@ -103,5 +108,28 @@ export class GameManager {
                 }
             }
         })
+    }
+
+    private async startRematch(currentGame: Game) {
+        const nextWhitePlayer = currentGame.getBlackPlayer();
+        const nextBlackPlayer = currentGame.getWhitePlayer();
+
+        try {
+            const persistedGame = await createGame({
+                whiteUserId: nextWhitePlayer.userId,
+                blackUserId: nextBlackPlayer.userId
+            });
+            const nextGame = new Game(
+                nextWhitePlayer,
+                nextBlackPlayer,
+                persistedGame.id,
+                async (game) => this.startRematch(game)
+            );
+            this.games = this.games.filter((game) => game !== currentGame);
+            this.games.push(nextGame);
+        } catch (error) {
+            console.error("Failed to create rematch game row:", error);
+            currentGame.handleRematchStartFailed();
+        }
     }
 }
