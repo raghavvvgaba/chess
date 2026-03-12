@@ -3,6 +3,7 @@ export const MOVE = "move";
 export const GAME_OVER = "game_over";
 export const WAITING_FOR_OPPONENT = "waiting_for_opponent";
 export const ALREADY_WAITING = "already_waiting";
+export const ALREADY_IN_GAME = "already_in_game";
 export const CANCEL_MATCHMAKING = "cancel_matchmaking";
 export const MATCHMAKING_CANCELLED = "matchmaking_cancelled";
 export const MOVE_APPLIED = "move_applied";

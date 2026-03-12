@@ -9,6 +9,7 @@ export const MOVE = "move";
 export const GAME_OVER = "game_over";
 export const WAITING_FOR_OPPONENT = "waiting_for_opponent";
 export const ALREADY_WAITING = "already_waiting";
+export const ALREADY_IN_GAME = "already_in_game";
 export const CANCEL_MATCHMAKING = "cancel_matchmaking";
 export const MATCHMAKING_CANCELLED = "matchmaking_cancelled";
 export const MOVE_APPLIED = "move_applied";
@@ -17,7 +18,7 @@ export const REMATCH_REQUEST = "rematch_request";
 export const REMATCH_STATE = "rematch_state";
 export const REMATCH_DECLINED = "rematch_declined";
 
-type GameState = "idle" | "waiting" | "in_game";
+type GameState = "idle" | "waiting" | "waiting_elsewhere" | "in_game";
 type PlayerColor = "white" | "black" | null;
 type Turn = "w" | "b" | null;
 type MoveRejectedReason = "not_your_turn" | "illegal_move" | "game_not_found";
@@ -203,13 +204,21 @@ function Game() {
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
                     break;
                 case ALREADY_WAITING:
-                    setGameState("waiting");
-                    setStatusMessage("You are already waiting for an opponent.");
+                    setGameState("waiting_elsewhere");
+                    setStatusMessage("Matchmaking is already active in another tab. Return there to manage or cancel it.");
                     setCancelRequested(false);
                     setCurrentTurn(null);
                     setCheckedKingSquare(null);
                     setMyPlayerName("User 1");
                     setOpponentPlayerName("User 2");
+                    setPendingPromotion(DEFAULT_PENDING_PROMOTION);
+                    break;
+                case ALREADY_IN_GAME:
+                    setGameState("idle");
+                    setStatusMessage("You already have an active match.");
+                    setCancelRequested(false);
+                    setCurrentTurn(null);
+                    setCheckedKingSquare(null);
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
                     break;
                 case MATCHMAKING_CANCELLED:
@@ -633,6 +642,18 @@ function Game() {
                                 className={`w-full text-white font-bold text-xl px-6 py-4 rounded-xl shadow transition-colors ${cancelRequested ? "bg-[#6e614f] text-gray-200 cursor-not-allowed" : "bg-[#4a4a48] hover:bg-[#5a5a58]"}`}
                             >
                                 {cancelRequested ? "Cancel requested..." : "Cancel Matchmaking"}
+                            </button>
+                        </>
+                    )}
+                    {gameState === "waiting_elsewhere" && (
+                        <>
+                            <h1 className="text-3xl font-bold">Matchmaking Is Active Elsewhere</h1>
+                            <p className="text-gray-300">Return to the original tab to keep waiting or cancel the search from there.</p>
+                            <button
+                                onClick={() => navigate("/", { replace: true })}
+                                className="w-full bg-[#4a4a48] hover:bg-[#5a5a58] text-white font-bold text-xl px-6 py-4 rounded-xl shadow transition-colors"
+                            >
+                                Back Home
                             </button>
                         </>
                     )}
