@@ -1,7 +1,114 @@
-import { ALREADY_IN_GAME, ALREADY_WAITING, CANCEL_MATCHMAKING, INIT_GAME, MATCHMAKING_CANCELLED, MOVE, MOVE_REJECTED, REMATCH_DECLINED, REMATCH_REQUEST, WAITING_FOR_OPPONENT } from "./messages.js";
+import { ALREADY_IN_GAME, ALREADY_WAITING, CANCEL_MATCHMAKING, INIT_GAME, INVALID_MESSAGE, MATCHMAKING_CANCELLED, MOVE, MOVE_REJECTED, REMATCH_DECLINED, REMATCH_REQUEST, WAITING_FOR_OPPONENT } from "./messages.js";
 import { Game } from "./Game.js";
 import { createGame } from "./gameStore.js";
 import type { AuthenticatedSocket } from "./socketTypes.js";
+
+type ClientInitGameMessage = { type: typeof INIT_GAME };
+type ClientCancelMatchmakingMessage = { type: typeof CANCEL_MATCHMAKING };
+type ClientRematchRequestMessage = { type: typeof REMATCH_REQUEST };
+type ClientMoveMessage = {
+    type: typeof MOVE;
+    payload: {
+        move: {
+            from: string;
+            to: string;
+            promotion?: string;
+        };
+    };
+};
+
+type ClientMessage =
+    | ClientInitGameMessage
+    | ClientCancelMatchmakingMessage
+    | ClientRematchRequestMessage
+    | ClientMoveMessage;
+
+type InvalidMessageReason =
+    | "invalid_json"
+    | "invalid_message_shape"
+    | "unknown_message_type"
+    | "invalid_init_game_payload"
+    | "invalid_cancel_matchmaking_payload"
+    | "invalid_rematch_request_payload"
+    | "invalid_move_payload";
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseClientMessage(rawData: string): { ok: true; message: ClientMessage } | { ok: false; reason: InvalidMessageReason } {
+    let parsed: unknown;
+
+    try {
+        parsed = JSON.parse(rawData);
+    } catch {
+        return { ok: false, reason: "invalid_json" };
+    }
+
+    if (!isPlainObject(parsed)) {
+        return { ok: false, reason: "invalid_message_shape" };
+    }
+
+    if (typeof parsed.type !== "string") {
+        return { ok: false, reason: "invalid_message_shape" };
+    }
+
+    if (parsed.type === INIT_GAME) {
+        if (typeof parsed.payload !== "undefined") {
+            return { ok: false, reason: "invalid_init_game_payload" };
+        }
+        return { ok: true, message: { type: INIT_GAME } };
+    }
+
+    if (parsed.type === CANCEL_MATCHMAKING) {
+        if (typeof parsed.payload !== "undefined") {
+            return { ok: false, reason: "invalid_cancel_matchmaking_payload" };
+        }
+        return { ok: true, message: { type: CANCEL_MATCHMAKING } };
+    }
+
+    if (parsed.type === REMATCH_REQUEST) {
+        if (typeof parsed.payload !== "undefined") {
+            return { ok: false, reason: "invalid_rematch_request_payload" };
+        }
+        return { ok: true, message: { type: REMATCH_REQUEST } };
+    }
+
+    if (parsed.type === MOVE) {
+        if (!isPlainObject(parsed.payload)) {
+            return { ok: false, reason: "invalid_move_payload" };
+        }
+
+        const maybeMove = parsed.payload.move;
+        if (!isPlainObject(maybeMove)) {
+            return { ok: false, reason: "invalid_move_payload" };
+        }
+
+        if (typeof maybeMove.from !== "string" || typeof maybeMove.to !== "string") {
+            return { ok: false, reason: "invalid_move_payload" };
+        }
+
+        if (typeof maybeMove.promotion !== "undefined" && typeof maybeMove.promotion !== "string") {
+            return { ok: false, reason: "invalid_move_payload" };
+        }
+
+        return {
+            ok: true,
+            message: {
+                type: MOVE,
+                payload: {
+                    move: {
+                        from: maybeMove.from,
+                        to: maybeMove.to,
+                        ...(typeof maybeMove.promotion === "string" ? { promotion: maybeMove.promotion } : {})
+                    }
+                }
+            }
+        };
+    }
+
+    return { ok: false, reason: "unknown_message_type" };
+}
 
 export class GameManager {
     private games: Game[];
@@ -38,7 +145,19 @@ export class GameManager {
 
     private addHandler(socket: AuthenticatedSocket) {
         socket.on("message", async (data) => {
-            const message = JSON.parse(data.toString());
+            const parsedMessage = parseClientMessage(data.toString());
+
+            if (!parsedMessage.ok) {
+                socket.send(JSON.stringify({
+                    type: INVALID_MESSAGE,
+                    payload: {
+                        reason: parsedMessage.reason
+                    }
+                }));
+                return;
+            }
+
+            const message = parsedMessage.message;
             if (message.type === INIT_GAME) {
                 if (this.pendingUser === socket || this.isUserQueued(socket.userId)) {
                     socket.send(JSON.stringify({
@@ -122,7 +241,7 @@ export class GameManager {
             if (message.type === MOVE) {
                 const game = this.getGameForUserId(socket.userId);
                 if (game) {
-                    game.makeMove(socket, message?.payload?.move);
+                    game.makeMove(socket, message.payload.move);
                 } else {
                     socket.send(JSON.stringify({
                         type: MOVE_REJECTED,

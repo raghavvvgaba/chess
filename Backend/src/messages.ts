@@ -8,6 +8,7 @@ export const CANCEL_MATCHMAKING = "cancel_matchmaking";
 export const MATCHMAKING_CANCELLED = "matchmaking_cancelled";
 export const MOVE_APPLIED = "move_applied";
 export const MOVE_REJECTED = "move_rejected";
+export const INVALID_MESSAGE = "invalid_message";
 export const REMATCH_REQUEST = "rematch_request";
 export const REMATCH_STATE = "rematch_state";
 export const REMATCH_DECLINED = "rematch_declined";
