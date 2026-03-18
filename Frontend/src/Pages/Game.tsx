@@ -41,7 +41,7 @@ type LastMove = { from: Square; to: Square } | null;
 type PromotionPiece = "q" | "r" | "b" | "n";
 type OpponentConnectionState = {
     isReconnecting: boolean;
-    graceSeconds: number;
+    reconnectDeadlineMs: number | null;
     isReconnected: boolean;
 };
 
@@ -99,7 +99,7 @@ const DEFAULT_PENDING_PROMOTION: PendingPromotion = {
 
 const DEFAULT_OPPONENT_CONNECTION_STATE: OpponentConnectionState = {
     isReconnecting: false,
-    graceSeconds: 20,
+    reconnectDeadlineMs: null,
     isReconnected: false
 };
 
@@ -153,7 +153,9 @@ function Game() {
     const [moveHistory, setMoveHistory] = useState<MoveHistoryEntry[]>([]);
     const [pendingPromotion, setPendingPromotion] = useState<PendingPromotion>(DEFAULT_PENDING_PROMOTION);
     const [opponentConnectionState, setOpponentConnectionState] = useState<OpponentConnectionState>(DEFAULT_OPPONENT_CONNECTION_STATE);
+    const [connectionNowMs, setConnectionNowMs] = useState(() => Date.now());
     const desktopHistoryRef = useRef<HTMLDivElement | null>(null);
+    const mobileHistoryRef = useRef<HTMLDivElement | null>(null);
 
     const parseInitMoveHistory = (value: unknown): MoveHistoryEntry[] => {
         if (!Array.isArray(value)) {
@@ -490,17 +492,16 @@ function Game() {
                 case PLAYER_CONNECTION_STATE: {
                     const state = message.payload?.state;
                     const graceMs = typeof message.payload?.graceMs === "number" ? message.payload.graceMs : 20_000;
-                    const graceSeconds = Math.max(1, Math.floor(graceMs / 1000));
                     if (state === "reconnecting") {
                         setOpponentConnectionState({
                             isReconnecting: true,
-                            graceSeconds,
+                            reconnectDeadlineMs: Date.now() + Math.max(1_000, graceMs),
                             isReconnected: false
                         });
                     } else if (state === "reconnected") {
                         setOpponentConnectionState({
                             isReconnecting: false,
-                            graceSeconds: 20,
+                            reconnectDeadlineMs: null,
                             isReconnected: true
                         });
                     }
@@ -522,7 +523,21 @@ function Game() {
             element.scrollTop = element.scrollHeight;
         };
         scrollToBottom(desktopHistoryRef.current);
+        scrollToBottom(mobileHistoryRef.current);
     }, [moveHistory]);
+
+    useEffect(() => {
+        if (!opponentConnectionState.isReconnecting) {
+            return;
+        }
+        setConnectionNowMs(Date.now());
+        const timer = window.setInterval(() => {
+            setConnectionNowMs(Date.now());
+        }, 1000);
+        return () => {
+            window.clearInterval(timer);
+        };
+    }, [opponentConnectionState.isReconnecting, opponentConnectionState.reconnectDeadlineMs]);
 
     useEffect(() => {
         if (!opponentConnectionState.isReconnected) {
@@ -808,7 +823,9 @@ function Game() {
 
     const getOpponentSubtitle = () => {
         if (opponentConnectionState.isReconnecting) {
-            return `Reconnecting... (${opponentConnectionState.graceSeconds}s)`;
+            const deadline = opponentConnectionState.reconnectDeadlineMs ?? connectionNowMs;
+            const secondsRemaining = Math.max(0, Math.ceil((deadline - connectionNowMs) / 1000));
+            return `Reconnecting... (${secondsRemaining}s)`;
         }
         if (opponentConnectionState.isReconnected) {
             return "Reconnected";
@@ -829,9 +846,9 @@ function Game() {
     };
 
     return (
-        <main className="h-dvh bg-[#262522] flex flex-col relative overflow-hidden pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <main className="h-dvh bg-[#262522] flex flex-col relative overflow-y-auto lg:overflow-hidden pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.5rem,env(safe-area-inset-bottom))]">
             <div className="w-full flex-1 flex flex-col lg:flex-row gap-2 lg:gap-4 p-2 lg:p-4 min-h-0">
-                <section className="flex-1 flex items-center justify-center min-h-0">
+                <section className="flex-1 flex items-start lg:items-center justify-center min-h-0">
                     <div className="w-full max-w-[calc(100dvh-11rem)] sm:max-w-[calc(100dvh-12rem)] lg:max-w-[calc(100dvh-10rem)] flex flex-col gap-1.5 sm:gap-2">
                     {/* Opponent info - above the board */}
                     <div className="w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-1.5 sm:py-2 bg-[#3a3936] rounded-lg shrink-0">
@@ -889,6 +906,28 @@ function Game() {
                     </div>
                     </div>
                 </section>
+
+                <div className="lg:hidden w-full max-w-[calc(100dvh-11rem)] sm:max-w-[calc(100dvh-12rem)] mx-auto flex flex-col gap-2">
+                    {statusMessage && (
+                        <div className="rounded-xl border border-[#45433f] bg-[#2f2e2b] text-gray-200 px-4 py-3 text-sm">
+                            {statusMessage}
+                        </div>
+                    )}
+                    <section className="rounded-xl border border-[#45433f] bg-[#2f2e2b] text-white p-3">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-base font-bold">Move History</h3>
+                            <span className="text-xs px-2 py-1 rounded-full bg-[#3a3936] text-gray-300">
+                                {moveHistory.length} moves
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-[36px_minmax(0,1fr)_minmax(0,1fr)] gap-2 px-2 pb-2 text-[11px] uppercase tracking-wide text-gray-400">
+                            <div>#</div>
+                            <div className="text-center">White</div>
+                            <div className="text-center">Black</div>
+                        </div>
+                        {renderMoveHistoryTable(mobileHistoryRef, "max-h-56")}
+                    </section>
+                </div>
 
                 <aside className="hidden lg:flex w-[340px] xl:w-[380px] shrink-0 flex-col gap-4 self-stretch">
                     {statusMessage && (
