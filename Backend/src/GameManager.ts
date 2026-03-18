@@ -1,6 +1,8 @@
+import { Chess } from "chess.js";
 import { ALREADY_IN_GAME, ALREADY_WAITING, CANCEL_MATCHMAKING, INIT_GAME, INVALID_MESSAGE, MATCHMAKING_CANCELLED, MOVE, MOVE_REJECTED, REMATCH_DECLINED, REMATCH_REQUEST, WAITING_FOR_OPPONENT } from "./messages.js";
 import { Game } from "./Game.js";
 import { createGame } from "./gameStore.js";
+import { getActiveRuntimeGameIds, getRuntimeGameSnapshot } from "./runtimeGameStore.js";
 import type { AuthenticatedSocket } from "./socketTypes.js";
 
 type ClientInitGameMessage = { type: typeof INIT_GAME };
@@ -125,8 +127,39 @@ export class GameManager {
 
     addUser(socket: AuthenticatedSocket) {
         this.users.push(socket);
+        this.attachRecoveredGame(socket);
         this.addHandler(socket);
+    }
 
+    async hydrateActiveGames() {
+        const activeGameIds = await getActiveRuntimeGameIds();
+
+        for (const gameId of activeGameIds) {
+            const snapshot = await getRuntimeGameSnapshot(gameId);
+            if (!snapshot) {
+                continue;
+            }
+
+            const whitePlayer = this.users.find((socket) => socket.userId === snapshot.whiteUserId);
+            const blackPlayer = this.users.find((socket) => socket.userId === snapshot.blackUserId);
+
+            if (!whitePlayer || !blackPlayer) {
+                continue;
+            }
+
+            const existingGame = this.games.find((game) => game.getGameId() === gameId);
+            if (existingGame) {
+                this.registerGame(existingGame, snapshot.whiteUserId, snapshot.blackUserId);
+                continue;
+            }
+
+            const game = Game.fromRuntimeSnapshot(snapshot, {
+                whitePlayer,
+                blackPlayer
+            }, async (currentGame) => this.startRematch(currentGame));
+            this.games.push(game);
+            this.registerGame(game, snapshot.whiteUserId, snapshot.blackUserId);
+        }
     }
 
     removeUser(socket: AuthenticatedSocket) {
@@ -136,11 +169,72 @@ export class GameManager {
         }
         const game = this.getGameForUserId(socket.userId);
         if (game && game.containsPlayer(socket)) {
-            game.handleDisconnect(socket);
-            this.games = this.games.filter(currentGame => currentGame !== game);
-            this.unregisterGame(game);
+            void game.handleDisconnect(socket).finally(() => {
+                this.games = this.games.filter(currentGame => currentGame !== game);
+                this.unregisterGame(game);
+            });
         }
-        // stop the game here because user left
+    }
+
+    private attachRecoveredGame(socket: AuthenticatedSocket) {
+        const game = this.getGameForUserId(socket.userId);
+        if (!game) {
+            return;
+        }
+
+        const boardFen = game.board.fen();
+        const whiteSocket = game.getWhitePlayer();
+        const blackSocket = game.getBlackPlayer();
+
+        if (whiteSocket.userId === socket.userId && whiteSocket !== socket) {
+            const recoveredGame = Game.fromRuntimeSnapshot({
+                gameId: game.getGameId(),
+                whiteUserId: whiteSocket.userId,
+                blackUserId: blackSocket.userId,
+                whiteUserName: whiteSocket.userName,
+                blackUserName: blackSocket.userName,
+                status: game.containsUserId(socket.userId) ? "active" : "finished",
+                currentFen: boardFen,
+                turn: game.board.turn(),
+                ply: this.countPlyFromFen(boardFen, game),
+                result: null,
+                startedAt: new Date().toISOString(),
+                endedAt: null,
+                lastFlushedPly: 0,
+                flushStatus: "idle",
+                flushAttempts: 0,
+                lastError: null,
+                moves: []
+            }, {
+                whitePlayer: socket,
+                blackPlayer: blackSocket
+            }, async (currentGame) => this.startRematch(currentGame));
+            this.replaceGameInstance(game, recoveredGame, socket.userId, blackSocket.userId);
+        } else if (blackSocket.userId === socket.userId && blackSocket !== socket) {
+            const recoveredGame = Game.fromRuntimeSnapshot({
+                gameId: game.getGameId(),
+                whiteUserId: whiteSocket.userId,
+                blackUserId: blackSocket.userId,
+                whiteUserName: whiteSocket.userName,
+                blackUserName: blackSocket.userName,
+                status: game.containsUserId(socket.userId) ? "active" : "finished",
+                currentFen: boardFen,
+                turn: game.board.turn(),
+                ply: this.countPlyFromFen(boardFen, game),
+                result: null,
+                startedAt: new Date().toISOString(),
+                endedAt: null,
+                lastFlushedPly: 0,
+                flushStatus: "idle",
+                flushAttempts: 0,
+                lastError: null,
+                moves: []
+            }, {
+                whitePlayer: whiteSocket,
+                blackPlayer: socket
+            }, async (currentGame) => this.startRematch(currentGame));
+            this.replaceGameInstance(game, recoveredGame, whiteSocket.userId, socket.userId);
+        }
     }
 
     private addHandler(socket: AuthenticatedSocket) {
@@ -196,7 +290,7 @@ export class GameManager {
                             whiteUserId: waitingPlayer.userId,
                             blackUserId: socket.userId
                         });
-                        const game = new Game(
+                        const game = await Game.createNew(
                             waitingPlayer,
                             socket,
                             persistedGame.id,
@@ -219,7 +313,9 @@ export class GameManager {
                         type: WAITING_FOR_OPPONENT
                     }));
                 }
+                return;
             }
+
             if (message.type === CANCEL_MATCHMAKING) {
                 if (this.pendingUser === socket) {
                     this.pendingUser = null;
@@ -237,11 +333,13 @@ export class GameManager {
                 socket.send(JSON.stringify({
                     type: MATCHMAKING_CANCELLED
                 }));
+                return;
             }
+
             if (message.type === MOVE) {
                 const game = this.getGameForUserId(socket.userId);
                 if (game) {
-                    game.makeMove(socket, message.payload.move);
+                    await game.makeMove(socket, message.payload.move);
                 } else {
                     socket.send(JSON.stringify({
                         type: MOVE_REJECTED,
@@ -250,7 +348,9 @@ export class GameManager {
                         }
                     }));
                 }
+                return;
             }
+
             if (message.type === REMATCH_REQUEST) {
                 const game = this.getGameForUserId(socket.userId);
                 if (game) {
@@ -265,7 +365,7 @@ export class GameManager {
                     }));
                 }
             }
-        })
+        });
     }
 
     private async startRematch(currentGame: Game) {
@@ -277,7 +377,7 @@ export class GameManager {
                 whiteUserId: nextWhitePlayer.userId,
                 blackUserId: nextBlackPlayer.userId
             });
-            const nextGame = new Game(
+            const nextGame = await Game.createNew(
                 nextWhitePlayer,
                 nextBlackPlayer,
                 persistedGame.id,
@@ -291,6 +391,17 @@ export class GameManager {
             console.error("Failed to create rematch game row:", error);
             currentGame.handleRematchStartFailed();
         }
+    }
+
+    private replaceGameInstance(previousGame: Game, nextGame: Game, whiteUserId: string, blackUserId: string) {
+        this.games = this.games.filter((game) => game !== previousGame);
+        this.unregisterGame(previousGame);
+        this.games.push(nextGame);
+        this.registerGame(nextGame, whiteUserId, blackUserId);
+    }
+
+    private countPlyFromFen(_fen: string, game: Game) {
+        return game.board.moveNumber() * 2 - (game.board.turn() === "w" ? 0 : 1);
     }
 
     private getGameForUserId(userId: string) {

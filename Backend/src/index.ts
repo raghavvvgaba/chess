@@ -7,6 +7,8 @@ import { WebSocketServer } from "ws";
 import { auth } from "./auth.js";
 import { verifyDatabaseConnection } from "./db.js";
 import { GameManager } from "./GameManager.js";
+import { closeRedisConnection, verifyRedisConnection } from "./redis.js";
+import { startRuntimeGameFlusher } from "./runtimeGameFlusher.js";
 import type { AuthenticatedSocket } from "./socketTypes.js";
 
 const port = Number(process.env.PORT ?? 8080);
@@ -20,6 +22,9 @@ function rejectUpgrade(socket: Duplex, statusLine: string) {
 
 async function bootstrap() {
     await verifyDatabaseConnection();
+    await verifyRedisConnection();
+    const flusher = startRuntimeGameFlusher();
+    await gameManager.hydrateActiveGames();
 
     const app = express();
     app.use(cors({
@@ -77,6 +82,20 @@ async function bootstrap() {
 
     server.listen(port, () => {
         console.log(`Backend listening on http://localhost:${port}`);
+    });
+
+    const shutdown = async () => {
+        flusher.stop();
+        await closeRedisConnection();
+        server.close();
+    };
+
+    process.on("SIGINT", () => {
+        void shutdown();
+    });
+
+    process.on("SIGTERM", () => {
+        void shutdown();
     });
 }
 

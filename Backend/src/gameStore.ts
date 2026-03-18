@@ -1,4 +1,5 @@
 import { pool } from "./db.js";
+import type { RuntimeMoveRecord } from "./runtimeGameStore.js";
 
 type GameStatus = "active" | "finished" | "aborted";
 type GameResult = "white" | "black" | "draw" | null;
@@ -36,9 +37,23 @@ export async function createGame(input: CreateGameInput) {
 export async function saveMove(input: SaveMoveInput) {
     await pool.query(
         `INSERT INTO moves (game_id, ply, san, uci, fen_after, played_by_user_id)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (game_id, ply) DO NOTHING`,
         [input.gameId, input.ply, input.san, input.uci, input.fenAfter, input.playedByUserId]
     );
+}
+
+export async function saveMovesBatch(input: { gameId: string; moves: RuntimeMoveRecord[] }) {
+    for (const move of input.moves) {
+        await saveMove({
+            gameId: input.gameId,
+            ply: move.ply,
+            san: move.san,
+            uci: move.uci,
+            fenAfter: move.fenAfter,
+            playedByUserId: move.playedByUserId
+        });
+    }
 }
 
 export async function finishGame(input: FinishGameInput) {

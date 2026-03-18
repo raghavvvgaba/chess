@@ -15,6 +15,7 @@ export const MATCHMAKING_CANCELLED = "matchmaking_cancelled";
 export const MOVE_APPLIED = "move_applied";
 export const MOVE_REJECTED = "move_rejected";
 export const INVALID_MESSAGE = "invalid_message";
+export const STORAGE_SYNC_FAILED = "storage_sync_failed";
 export const REMATCH_REQUEST = "rematch_request";
 export const REMATCH_STATE = "rematch_state";
 export const REMATCH_DECLINED = "rematch_declined";
@@ -22,7 +23,7 @@ export const REMATCH_DECLINED = "rematch_declined";
 type GameState = "idle" | "waiting" | "waiting_elsewhere" | "in_game";
 type PlayerColor = "white" | "black" | null;
 type Turn = "w" | "b" | null;
-type MoveRejectedReason = "not_your_turn" | "illegal_move" | "game_not_found";
+type MoveRejectedReason = "not_your_turn" | "illegal_move" | "game_not_found" | "storage_sync_failed";
 type MatchResult = "checkmate" | "draw" | "opponent_left";
 type MatchReason =
     | "checkmate"
@@ -151,6 +152,9 @@ function Game() {
             }
             if (reason === "illegal_move") {
                 return "Illegal move.";
+            }
+            if (reason === "storage_sync_failed") {
+                return "Move could not be saved right now. Please try again.";
             }
             return "Move rejected: game not found.";
         };
@@ -283,6 +287,14 @@ function Game() {
                     break;
                 case INVALID_MESSAGE:
                     setStatusMessage("Received an invalid message response. Please retry.");
+                    setPendingPromotion(DEFAULT_PENDING_PROMOTION);
+                    break;
+                case STORAGE_SYNC_FAILED:
+                    setStatusMessage(
+                        message.payload?.reason === "game_sync_failed"
+                            ? "Game result could not be saved right now. Please wait and try again."
+                            : "Move could not be saved right now. Please try again."
+                    );
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
                     break;
                 case GAME_OVER: {

@@ -1,10 +1,10 @@
 import { WebSocket } from "ws";
 import { Chess } from "chess.js";
-import { GAME_OVER, INIT_GAME, MOVE_APPLIED, MOVE_REJECTED, REMATCH_DECLINED, REMATCH_STATE } from "./messages.js";
-import { finishGame as finishGameInStore, saveMove } from "./gameStore.js";
+import { GAME_OVER, INIT_GAME, MOVE_APPLIED, MOVE_REJECTED, REMATCH_DECLINED, REMATCH_STATE, STORAGE_SYNC_FAILED } from "./messages.js";
+import { appendMoveToRuntimeGame, completeRuntimeGame, initializeRuntimeGame, type RuntimeGameSnapshot } from "./runtimeGameStore.js";
 import type { AuthenticatedSocket } from "./socketTypes.js";
 
-type MoveRejectedReason = "not_your_turn" | "illegal_move";
+type MoveRejectedReason = "not_your_turn" | "illegal_move" | "storage_sync_failed";
 type ResultType = "checkmate" | "draw" | "opponent_left";
 type ResultReason =
     | "checkmate"
@@ -18,6 +18,20 @@ type WinnerColor = "white" | "black" | null;
 type RematchStatus = "waiting" | "starting";
 type PlayerColor = "white" | "black";
 type PromotionPiece = "q" | "r" | "b" | "n";
+
+type GameOverPayload = {
+    result: ResultType;
+    reason: ResultReason;
+    winnerColor: WinnerColor;
+    fen: string;
+    turn: "w" | "b" | null;
+};
+
+type GameConstructorOptions = {
+    onRematchReady: (game: Game) => Promise<void>;
+    suppressInitMessages?: boolean;
+    initialSnapshot?: RuntimeGameSnapshot;
+};
 
 export class Game {
     public player1: AuthenticatedSocket;
@@ -38,7 +52,7 @@ export class Game {
         player1: AuthenticatedSocket,
         player2: AuthenticatedSocket,
         gameId: string,
-        onRematchReady: (game: Game) => Promise<void>
+        options: GameConstructorOptions
     ) {
         this.player1 = player1;
         this.player2 = player2;
@@ -47,15 +61,67 @@ export class Game {
         this.board = new Chess();
         this.startTime = new Date();
         this.gameId = gameId;
-        this.onRematchReady = onRematchReady;
-        this.sendInitGameMessages();
+        this.onRematchReady = options.onRematchReady;
+
+        if (options.initialSnapshot) {
+            this.restoreFromSnapshot(options.initialSnapshot);
+        }
+
+        if (!options.suppressInitMessages) {
+            this.sendInitGameMessages();
+        }
+    }
+
+    static async createNew(
+        player1: AuthenticatedSocket,
+        player2: AuthenticatedSocket,
+        gameId: string,
+        onRematchReady: (game: Game) => Promise<void>
+    ) {
+        const game = new Game(player1, player2, gameId, {
+            onRematchReady,
+            suppressInitMessages: true
+        });
+
+        await initializeRuntimeGame({
+            gameId,
+            whiteUserId: game.whitePlayer.userId,
+            blackUserId: game.blackPlayer.userId,
+            whiteUserName: game.whitePlayer.userName,
+            blackUserName: game.blackPlayer.userName,
+            currentFen: game.board.fen(),
+            turn: game.board.turn(),
+            startedAt: game.startTime.toISOString()
+        });
+
+        game.sendInitGameMessages();
+        return game;
+    }
+
+    static fromRuntimeSnapshot(
+        snapshot: RuntimeGameSnapshot,
+        sockets: {
+            whitePlayer: AuthenticatedSocket;
+            blackPlayer: AuthenticatedSocket;
+        },
+        onRematchReady: (game: Game) => Promise<void>
+    ) {
+        return new Game(sockets.whitePlayer, sockets.blackPlayer, snapshot.gameId, {
+            onRematchReady,
+            suppressInitMessages: true,
+            initialSnapshot: snapshot
+        });
     }
 
     containsPlayer(socket: AuthenticatedSocket) {
         return this.player1 === socket || this.player2 === socket;
     }
 
-    makeMove(socket: AuthenticatedSocket, move: unknown) {
+    containsUserId(userId: string) {
+        return this.whitePlayer.userId === userId || this.blackPlayer.userId === userId;
+    }
+
+    async makeMove(socket: AuthenticatedSocket, move: unknown) {
         if (this.isConcluded) {
             this.sendMoveRejected(socket, "illegal_move");
             return;
@@ -110,8 +176,8 @@ export class Game {
                     san: result.san
                 };
             }
-        } catch (e) {
-            console.log(e);
+        } catch (error) {
+            console.log(error);
             this.sendMoveRejected(socket, "illegal_move");
             return;
         }
@@ -129,25 +195,40 @@ export class Game {
             san: appliedMove.san,
             ply: this.ply
         };
+        const uci = `${appliedMove.from}${appliedMove.to}${appliedMove.promotion ?? ""}`;
+
+        try {
+            await appendMoveToRuntimeGame({
+                gameId: this.gameId,
+                currentFen: this.board.fen(),
+                turn: this.board.turn(),
+                ply: this.ply,
+                move: {
+                    ply: this.ply,
+                    san: appliedMove.san,
+                    uci,
+                    fenAfter: this.board.fen(),
+                    playedByUserId: socket.userId,
+                    playedAt: new Date().toISOString()
+                }
+            });
+        } catch (error) {
+            this.board.undo();
+            this.ply -= 1;
+            console.error("Failed to persist runtime move:", error);
+            this.sendMoveRejected(socket, "storage_sync_failed");
+            this.sendStorageSyncFailed(socket, "move_sync_failed");
+            return;
+        }
+
         this.sendToBoth({
             type: MOVE_APPLIED,
             payload: moveAppliedPayload
         });
-        const uci = `${appliedMove.from}${appliedMove.to}${appliedMove.promotion ?? ""}`;
-        void saveMove({
-            gameId: this.gameId,
-            ply: this.ply,
-            san: appliedMove.san,
-            uci,
-            fenAfter: this.board.fen(),
-            playedByUserId: socket.userId
-        }).catch((error) => {
-            console.error("Failed to persist move:", error);
-        });
 
         if (this.board.isGameOver()) {
             const gameOverPayload = this.getBoardGameOverPayload();
-            this.finishGame(gameOverPayload);
+            await this.finishGame(gameOverPayload);
         }
     }
 
@@ -191,6 +272,10 @@ export class Game {
         return this.blackPlayer;
     }
 
+    getGameId() {
+        return this.gameId;
+    }
+
     handleRematchStartFailed() {
         if (!this.isConcluded) {
             return;
@@ -208,7 +293,7 @@ export class Game {
         });
     }
 
-    handleDisconnect(socket: AuthenticatedSocket) {
+    async handleDisconnect(socket: AuthenticatedSocket) {
         if (!this.containsPlayer(socket)) {
             return;
         }
@@ -232,13 +317,22 @@ export class Game {
         const winnerColor: WinnerColor =
             disconnectedColor === "white" ? "black" : disconnectedColor === "black" ? "white" : null;
 
-        this.finishGame({
+        await this.finishGame({
             result: "opponent_left",
             reason: "opponent_left",
             winnerColor,
             fen: this.board.fen(),
             turn: null
         });
+    }
+
+    private restoreFromSnapshot(snapshot: RuntimeGameSnapshot) {
+        this.whitePlayer = this.player1;
+        this.blackPlayer = this.player2;
+        this.board = new Chess(snapshot.currentFen);
+        this.startTime = new Date(snapshot.startedAt);
+        this.ply = snapshot.ply;
+        this.isConcluded = snapshot.status !== "active";
     }
 
     private sendInitGameMessages() {
@@ -266,20 +360,20 @@ export class Game {
         });
     }
 
-    private getBoardGameOverPayload() {
+    private getBoardGameOverPayload(): GameOverPayload {
         if (this.board.isCheckmate()) {
             return {
-                result: "checkmate" as ResultType,
-                reason: "checkmate" as ResultReason,
-                winnerColor: this.board.turn() === "w" ? "black" as WinnerColor : "white" as WinnerColor,
+                result: "checkmate",
+                reason: "checkmate",
+                winnerColor: this.board.turn() === "w" ? "black" : "white",
                 fen: this.board.fen(),
                 turn: this.board.turn()
             };
         }
         if (this.board.isStalemate()) {
             return {
-                result: "draw" as ResultType,
-                reason: "stalemate" as ResultReason,
+                result: "draw",
+                reason: "stalemate",
                 winnerColor: null,
                 fen: this.board.fen(),
                 turn: this.board.turn()
@@ -287,8 +381,8 @@ export class Game {
         }
         if (this.board.isThreefoldRepetition()) {
             return {
-                result: "draw" as ResultType,
-                reason: "threefold_repetition" as ResultReason,
+                result: "draw",
+                reason: "threefold_repetition",
                 winnerColor: null,
                 fen: this.board.fen(),
                 turn: this.board.turn()
@@ -296,8 +390,8 @@ export class Game {
         }
         if (this.board.isInsufficientMaterial()) {
             return {
-                result: "draw" as ResultType,
-                reason: "insufficient_material" as ResultReason,
+                result: "draw",
+                reason: "insufficient_material",
                 winnerColor: null,
                 fen: this.board.fen(),
                 turn: this.board.turn()
@@ -305,29 +399,46 @@ export class Game {
         }
         if (this.board.isDrawByFiftyMoves()) {
             return {
-                result: "draw" as ResultType,
-                reason: "fifty_move_rule" as ResultReason,
+                result: "draw",
+                reason: "fifty_move_rule",
                 winnerColor: null,
                 fen: this.board.fen(),
                 turn: this.board.turn()
             };
         }
         return {
-            result: "draw" as ResultType,
-            reason: "other" as ResultReason,
+            result: "draw",
+            reason: "other",
             winnerColor: null,
             fen: this.board.fen(),
             turn: this.board.turn()
         };
     }
 
-    private finishGame(payload: {
-        result: ResultType;
-        reason: ResultReason;
-        winnerColor: WinnerColor;
-        fen: string;
-        turn: "w" | "b" | null;
-    }) {
+    private async finishGame(payload: GameOverPayload) {
+        if (this.isConcluded && payload.reason !== "opponent_left") {
+            return;
+        }
+
+        try {
+            const resultForPersistence = payload.reason === "opponent_left"
+                ? null
+                : this.getResultForPersistence(payload.winnerColor);
+
+            await completeRuntimeGame({
+                gameId: this.gameId,
+                status: payload.reason === "opponent_left" ? "aborted" : "finished",
+                result: resultForPersistence,
+                currentFen: payload.fen,
+                turn: payload.turn,
+                endedAt: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error("Failed to persist runtime game result:", error);
+            this.sendStorageSyncFailed(payload.winnerColor === null ? null : payload.winnerColor === "white" ? this.whitePlayer : this.blackPlayer, "game_sync_failed");
+            return;
+        }
+
         this.isConcluded = true;
         this.rematchStarting = false;
         this.rematchRequestedByWhite = false;
@@ -336,14 +447,6 @@ export class Game {
         this.sendToBoth({
             type: GAME_OVER,
             payload
-        });
-
-        void finishGameInStore({
-            gameId: this.gameId,
-            status: "finished",
-            result: this.getResultForPersistence(payload.winnerColor)
-        }).catch((error) => {
-            console.error("Failed to persist game result:", error);
         });
     }
 
@@ -366,6 +469,21 @@ export class Game {
                 fen: this.board.fen(),
                 turn: this.board.turn()
             }
+        });
+    }
+
+    private sendStorageSyncFailed(socket: AuthenticatedSocket | null, reason: "move_sync_failed" | "game_sync_failed") {
+        if (!socket) {
+            this.sendToBoth({
+                type: STORAGE_SYNC_FAILED,
+                payload: { reason }
+            });
+            return;
+        }
+
+        this.sendToSocket(socket, {
+            type: STORAGE_SYNC_FAILED,
+            payload: { reason }
         });
     }
 
