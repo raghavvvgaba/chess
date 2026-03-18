@@ -21,6 +21,7 @@ export const REMATCH_REQUEST = "rematch_request";
 export const REMATCH_STATE = "rematch_state";
 export const REMATCH_DECLINED = "rematch_declined";
 export const PLAYER_CONNECTION_STATE = "player_connection_state";
+export const QUIT_GAME = "quit_game";
 
 type GameState = "idle" | "waiting" | "waiting_elsewhere" | "in_game";
 type PlayerColor = "white" | "black" | null;
@@ -33,6 +34,7 @@ type MatchReason =
     | "threefold_repetition"
     | "insufficient_material"
     | "fifty_move_rule"
+    | "resigned"
     | "opponent_left"
     | "other";
 type RematchStateType = "idle" | "requested" | "waiting" | "declined";
@@ -153,6 +155,8 @@ function Game() {
     const [moveHistory, setMoveHistory] = useState<MoveHistoryEntry[]>([]);
     const [pendingPromotion, setPendingPromotion] = useState<PendingPromotion>(DEFAULT_PENDING_PROMOTION);
     const [opponentConnectionState, setOpponentConnectionState] = useState<OpponentConnectionState>(DEFAULT_OPPONENT_CONNECTION_STATE);
+    const [quitRequested, setQuitRequested] = useState(false);
+    const [quitDialogOpen, setQuitDialogOpen] = useState(false);
     const [connectionNowMs, setConnectionNowMs] = useState(() => Date.now());
     const desktopHistoryRef = useRef<HTMLDivElement | null>(null);
     const mobileHistoryRef = useRef<HTMLDivElement | null>(null);
@@ -274,6 +278,8 @@ function Game() {
                     setMoveHistory(parseInitMoveHistory(message.payload?.moveHistory));
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
                     setOpponentConnectionState(DEFAULT_OPPONENT_CONNECTION_STATE);
+                    setQuitRequested(false);
+                    setQuitDialogOpen(false);
                     break;
                 case WAITING_FOR_OPPONENT:
                     setGameState("waiting");
@@ -365,6 +371,7 @@ function Game() {
                     }
                     setStatusMessage(getMoveRejectedMessage(message.payload?.reason));
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
+                    setQuitRequested(false);
                     break;
                 case INVALID_MESSAGE:
                     setStatusMessage("Received an invalid message response. Please retry.");
@@ -381,6 +388,8 @@ function Game() {
                 case ACTION_REJECTED:
                     setStatusMessage(getActionRejectedMessage(message.payload?.reason));
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
+                    setQuitRequested(false);
+                    setQuitDialogOpen(false);
                     break;
                 case GAME_OVER: {
                     if (typeof message.payload?.fen === "string") {
@@ -412,6 +421,7 @@ function Game() {
                         message.payload?.reason === "threefold_repetition" ||
                         message.payload?.reason === "insufficient_material" ||
                         message.payload?.reason === "fifty_move_rule" ||
+                        message.payload?.reason === "resigned" ||
                         message.payload?.reason === "opponent_left" ||
                         message.payload?.reason === "other"
                             ? message.payload.reason
@@ -425,6 +435,8 @@ function Game() {
                     setStatusMessage("");
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
                     setOpponentConnectionState(DEFAULT_OPPONENT_CONNECTION_STATE);
+                    setQuitRequested(false);
+                    setQuitDialogOpen(false);
                     setMatchConclusion({
                         isOpen: true,
                         result,
@@ -540,6 +552,21 @@ function Game() {
     }, [opponentConnectionState.isReconnecting, opponentConnectionState.reconnectDeadlineMs]);
 
     useEffect(() => {
+        if (!quitDialogOpen || quitRequested) {
+            return;
+        }
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                setQuitDialogOpen(false);
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => {
+            window.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [quitDialogOpen, quitRequested]);
+
+    useEffect(() => {
         if (!opponentConnectionState.isReconnected) {
             return;
         }
@@ -567,6 +594,9 @@ function Game() {
     }
 
     const getConclusionTitle = () => {
+        if (matchConclusion.reason === "resigned") {
+            return "Resignation";
+        }
         if (matchConclusion.result === "checkmate") {
             return "Checkmate";
         }
@@ -585,6 +615,9 @@ function Game() {
     };
 
     const getConclusionSubtitle = () => {
+        if (matchConclusion.reason === "resigned") {
+            return matchConclusion.isWinner ? "Opponent resigned." : "You resigned.";
+        }
         if (matchConclusion.result === "checkmate") {
             if (matchConclusion.isWinner) {
                 return `You won as ${playerColor === "black" ? "Black" : "White"}.`;
@@ -769,6 +802,33 @@ function Game() {
         }
     };
 
+    const handleQuitGame = () => {
+        if (matchConclusion.isOpen || quitRequested) {
+            return;
+        }
+        setQuitDialogOpen(true);
+    };
+
+    const handleConfirmQuit = () => {
+        if (socket.readyState !== WebSocket.OPEN) {
+            setStatusMessage("Connection issue. Try again.");
+            setQuitDialogOpen(false);
+            return;
+        }
+        setQuitRequested(true);
+        setQuitDialogOpen(false);
+        socket.send(JSON.stringify({
+            type: QUIT_GAME
+        }));
+    };
+
+    const handleCancelQuit = () => {
+        if (quitRequested) {
+            return;
+        }
+        setQuitDialogOpen(false);
+    };
+
     const handleGoHome = () => {
         setPendingPromotion(DEFAULT_PENDING_PROMOTION);
         navigate("/", { replace: true });
@@ -850,6 +910,21 @@ function Game() {
             <div className="w-full flex-1 flex flex-col lg:flex-row gap-2 lg:gap-4 p-2 lg:p-4 min-h-0">
                 <section className="flex-1 flex items-start lg:items-center justify-center min-h-0">
                     <div className="w-full max-w-[calc(100dvh-11rem)] sm:max-w-[calc(100dvh-12rem)] lg:max-w-[calc(100dvh-10rem)] flex flex-col gap-1.5 sm:gap-2">
+                    <div className="w-full flex justify-end lg:hidden">
+                        <button
+                            onClick={handleQuitGame}
+                            disabled={quitRequested || matchConclusion.isOpen}
+                            className={`inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors ${quitRequested || matchConclusion.isOpen ? "border-[#5b5042] bg-[#40372c] text-[#d5cab8] cursor-not-allowed" : "border-[#8f4a4a] bg-[#5a3030] text-[#f8dedd] hover:bg-[#6a3737]"}`}
+                            aria-label="Quit match"
+                            title="Quit match"
+                        >
+                            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current stroke-2" aria-hidden="true">
+                                <path d="M14 7l5 5-5 5" />
+                                <path d="M19 12H9" />
+                                <path d="M11 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h6" />
+                            </svg>
+                        </button>
+                    </div>
                     {/* Opponent info - above the board */}
                     <div className="w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-1.5 sm:py-2 bg-[#3a3936] rounded-lg shrink-0">
                         <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center shrink-0 ${playerColor === "white" ? "bg-[#262522] border-2 border-gray-500" : "bg-white"}`}>
@@ -930,6 +1005,13 @@ function Game() {
                 </div>
 
                 <aside className="hidden lg:flex w-[340px] xl:w-[380px] shrink-0 flex-col gap-4 self-stretch">
+                    <button
+                        onClick={handleQuitGame}
+                        disabled={quitRequested || matchConclusion.isOpen}
+                        className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${quitRequested || matchConclusion.isOpen ? "border-[#5b5042] bg-[#40372c] text-[#d5cab8] cursor-not-allowed" : "border-[#8f4a4a] bg-[#5a3030] text-[#f8dedd] hover:bg-[#6a3737]"}`}
+                    >
+                        {quitRequested ? "Quitting..." : "Quit Match"}
+                    </button>
                     {statusMessage && (
                         <div className="rounded-xl border border-[#45433f] bg-[#2f2e2b] text-gray-200 px-4 py-3 text-sm">
                             {statusMessage}
@@ -983,6 +1065,43 @@ function Game() {
                         >
                             Cancel
                         </button>
+                    </section>
+                </div>
+            )}
+
+            {quitDialogOpen && !matchConclusion.isOpen && (
+                <div
+                    className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-[55]"
+                    onClick={() => {
+                        if (!quitRequested) {
+                            setQuitDialogOpen(false);
+                        }
+                    }}
+                >
+                    <section
+                        className="w-full max-w-md bg-[#2f2e2b] border border-[#5f5b53] rounded-2xl p-6 text-center text-white shadow-2xl"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <h2 className="text-2xl font-extrabold mb-2">Quit Match?</h2>
+                        <p className="text-sm text-gray-300 mb-6">
+                            If you quit now, this game will be recorded as a resignation.
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <button
+                                onClick={handleCancelQuit}
+                                disabled={quitRequested}
+                                className="flex-1 bg-[#3c3b38] hover:bg-[#4a4945] text-white font-bold px-5 py-3 rounded-xl transition-colors"
+                            >
+                                Keep Playing
+                            </button>
+                            <button
+                                onClick={handleConfirmQuit}
+                                disabled={quitRequested}
+                                className={`flex-1 font-bold px-5 py-3 rounded-xl transition-colors ${quitRequested ? "bg-[#6e614f] text-gray-200 cursor-not-allowed" : "bg-[#8f4a4a] hover:bg-[#9f5555] text-white"}`}
+                            >
+                                {quitRequested ? "Quitting..." : "Confirm Quit"}
+                            </button>
+                        </div>
                     </section>
                 </div>
             )}

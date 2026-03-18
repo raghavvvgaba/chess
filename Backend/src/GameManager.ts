@@ -1,4 +1,4 @@
-import { ALREADY_IN_GAME, ALREADY_WAITING, ACTION_REJECTED, CANCEL_MATCHMAKING, INIT_GAME, INVALID_MESSAGE, MATCHMAKING_CANCELLED, MOVE, REMATCH_REQUEST, WAITING_FOR_OPPONENT } from "./messages.js";
+import { ALREADY_IN_GAME, ALREADY_WAITING, ACTION_REJECTED, CANCEL_MATCHMAKING, INIT_GAME, INVALID_MESSAGE, MATCHMAKING_CANCELLED, MOVE, QUIT_GAME, REMATCH_REQUEST, WAITING_FOR_OPPONENT } from "./messages.js";
 import { Game } from "./Game.js";
 import { createGame } from "./gameStore.js";
 import { getActiveRuntimeGameIds, getRuntimeGameSnapshot } from "./runtimeGameStore.js";
@@ -7,6 +7,7 @@ import type { AuthenticatedSocket } from "./socketTypes.js";
 type ClientInitGameMessage = { type: typeof INIT_GAME };
 type ClientCancelMatchmakingMessage = { type: typeof CANCEL_MATCHMAKING };
 type ClientRematchRequestMessage = { type: typeof REMATCH_REQUEST };
+type ClientQuitGameMessage = { type: typeof QUIT_GAME };
 type ClientMoveMessage = {
     type: typeof MOVE;
     payload: {
@@ -22,6 +23,7 @@ type ClientMessage =
     | ClientInitGameMessage
     | ClientCancelMatchmakingMessage
     | ClientRematchRequestMessage
+    | ClientQuitGameMessage
     | ClientMoveMessage;
 
 type InvalidMessageReason =
@@ -31,6 +33,7 @@ type InvalidMessageReason =
     | "invalid_init_game_payload"
     | "invalid_cancel_matchmaking_payload"
     | "invalid_rematch_request_payload"
+    | "invalid_quit_game_payload"
     | "invalid_move_payload";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -73,6 +76,13 @@ function parseClientMessage(rawData: string): { ok: true; message: ClientMessage
             return { ok: false, reason: "invalid_rematch_request_payload" };
         }
         return { ok: true, message: { type: REMATCH_REQUEST } };
+    }
+
+    if (parsed.type === QUIT_GAME) {
+        if (typeof parsed.payload !== "undefined") {
+            return { ok: false, reason: "invalid_quit_game_payload" };
+        }
+        return { ok: true, message: { type: QUIT_GAME } };
     }
 
     if (parsed.type === MOVE) {
@@ -301,6 +311,19 @@ export class GameManager {
                         return;
                     }
                     game.requestRematch(socket);
+                } else {
+                    this.sendActionRejected(socket, "not_in_game");
+                }
+            }
+
+            if (message.type === QUIT_GAME) {
+                const game = this.getGameForUserId(socket.userId);
+                if (game) {
+                    if (!game.containsPlayer(socket)) {
+                        this.sendActionRejected(socket, "not_game_participant");
+                        return;
+                    }
+                    await game.quitGame(socket);
                 } else {
                     this.sendActionRejected(socket, "not_in_game");
                 }

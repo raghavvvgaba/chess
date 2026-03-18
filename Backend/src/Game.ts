@@ -12,6 +12,7 @@ type ResultReason =
     | "threefold_repetition"
     | "insufficient_material"
     | "fifty_move_rule"
+    | "resigned"
     | "opponent_left"
     | "other";
 type WinnerColor = "white" | "black" | null;
@@ -286,6 +287,27 @@ export class Game {
         }
 
         this.sendRematchState("waiting");
+    }
+
+    async quitGame(socket: AuthenticatedSocket) {
+        if (this.isConcluded) {
+            this.sendActionRejected(socket, "not_in_game");
+            return;
+        }
+        const quitterColor = this.getColorForSocket(socket);
+        if (!quitterColor) {
+            this.sendActionRejected(socket, "not_game_participant");
+            return;
+        }
+
+        const winnerColor: WinnerColor = quitterColor === "white" ? "black" : "white";
+        await this.finishGame({
+            result: "opponent_left",
+            reason: "resigned",
+            winnerColor,
+            fen: this.board.fen(),
+            turn: null
+        });
     }
 
     getWhitePlayer() {
