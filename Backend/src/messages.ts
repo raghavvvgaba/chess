@@ -14,3 +14,4 @@ export const ACTION_REJECTED = "action_rejected";
 export const REMATCH_REQUEST = "rematch_request";
 export const REMATCH_STATE = "rematch_state";
 export const REMATCH_DECLINED = "rematch_declined";
+export const PLAYER_CONNECTION_STATE = "player_connection_state";

@@ -1,4 +1,4 @@
-import { ALREADY_IN_GAME, ALREADY_WAITING, ACTION_REJECTED, CANCEL_MATCHMAKING, INIT_GAME, INVALID_MESSAGE, MATCHMAKING_CANCELLED, MOVE, MOVE_REJECTED, REMATCH_DECLINED, REMATCH_REQUEST, WAITING_FOR_OPPONENT } from "./messages.js";
+import { ALREADY_IN_GAME, ALREADY_WAITING, ACTION_REJECTED, CANCEL_MATCHMAKING, INIT_GAME, INVALID_MESSAGE, MATCHMAKING_CANCELLED, MOVE, REMATCH_REQUEST, WAITING_FOR_OPPONENT } from "./messages.js";
 import { Game } from "./Game.js";
 import { createGame } from "./gameStore.js";
 import { getActiveRuntimeGameIds, getRuntimeGameSnapshot } from "./runtimeGameStore.js";
@@ -126,7 +126,12 @@ export class GameManager {
 
     addUser(socket: AuthenticatedSocket) {
         this.users.push(socket);
-        this.attachRecoveredGame(socket);
+        const activeGame = this.getGameForUserId(socket.userId);
+        if (activeGame) {
+            activeGame.reattachPlayer(socket.userId, socket);
+            this.addHandler(socket);
+            return;
+        }
         this.addHandler(socket);
     }
 
@@ -155,7 +160,7 @@ export class GameManager {
             const game = Game.fromRuntimeSnapshot(snapshot, {
                 whitePlayer,
                 blackPlayer
-            }, async (currentGame) => this.startRematch(currentGame));
+            }, async (currentGame) => this.startRematch(currentGame), (currentGame) => this.handleDisconnectTimeout(currentGame));
             this.games.push(game);
             this.registerGame(game, snapshot.whiteUserId, snapshot.blackUserId);
         }
@@ -168,71 +173,13 @@ export class GameManager {
         }
         const game = this.getGameForUserId(socket.userId);
         if (game && game.containsPlayer(socket)) {
-            void game.handleDisconnect(socket).finally(() => {
+            void game.handleDisconnect(socket).then((resolution) => {
+                if (resolution !== "remove") {
+                    return;
+                }
                 this.games = this.games.filter(currentGame => currentGame !== game);
                 this.unregisterGame(game);
             });
-        }
-    }
-
-    private attachRecoveredGame(socket: AuthenticatedSocket) {
-        const game = this.getGameForUserId(socket.userId);
-        if (!game) {
-            return;
-        }
-
-        const boardFen = game.board.fen();
-        const whiteSocket = game.getWhitePlayer();
-        const blackSocket = game.getBlackPlayer();
-
-        if (whiteSocket.userId === socket.userId && whiteSocket !== socket) {
-            const recoveredGame = Game.fromRuntimeSnapshot({
-                gameId: game.getGameId(),
-                whiteUserId: whiteSocket.userId,
-                blackUserId: blackSocket.userId,
-                whiteUserName: whiteSocket.userName,
-                blackUserName: blackSocket.userName,
-                status: game.containsUserId(socket.userId) ? "active" : "finished",
-                currentFen: boardFen,
-                turn: game.board.turn(),
-                ply: this.countPlyFromFen(boardFen, game),
-                result: null,
-                startedAt: new Date().toISOString(),
-                endedAt: null,
-                lastFlushedPly: 0,
-                flushStatus: "idle",
-                flushAttempts: 0,
-                lastError: null,
-                moves: []
-            }, {
-                whitePlayer: socket,
-                blackPlayer: blackSocket
-            }, async (currentGame) => this.startRematch(currentGame));
-            this.replaceGameInstance(game, recoveredGame, socket.userId, blackSocket.userId);
-        } else if (blackSocket.userId === socket.userId && blackSocket !== socket) {
-            const recoveredGame = Game.fromRuntimeSnapshot({
-                gameId: game.getGameId(),
-                whiteUserId: whiteSocket.userId,
-                blackUserId: blackSocket.userId,
-                whiteUserName: whiteSocket.userName,
-                blackUserName: blackSocket.userName,
-                status: game.containsUserId(socket.userId) ? "active" : "finished",
-                currentFen: boardFen,
-                turn: game.board.turn(),
-                ply: this.countPlyFromFen(boardFen, game),
-                result: null,
-                startedAt: new Date().toISOString(),
-                endedAt: null,
-                lastFlushedPly: 0,
-                flushStatus: "idle",
-                flushAttempts: 0,
-                lastError: null,
-                moves: []
-            }, {
-                whitePlayer: whiteSocket,
-                blackPlayer: socket
-            }, async (currentGame) => this.startRematch(currentGame));
-            this.replaceGameInstance(game, recoveredGame, whiteSocket.userId, socket.userId);
         }
     }
 
@@ -293,7 +240,8 @@ export class GameManager {
                             waitingPlayer,
                             socket,
                             persistedGame.id,
-                            async (currentGame) => this.startRematch(currentGame)
+                            async (currentGame) => this.startRematch(currentGame),
+                            (currentGame) => this.handleDisconnectTimeout(currentGame)
                         );
                         this.games.push(game);
                         this.registerGame(game, waitingPlayer.userId, socket.userId);
@@ -373,7 +321,8 @@ export class GameManager {
                 nextWhitePlayer,
                 nextBlackPlayer,
                 persistedGame.id,
-                async (game) => this.startRematch(game)
+                async (game) => this.startRematch(game),
+                (game) => this.handleDisconnectTimeout(game)
             );
             this.games = this.games.filter((game) => game !== currentGame);
             this.unregisterGame(currentGame);
@@ -385,15 +334,9 @@ export class GameManager {
         }
     }
 
-    private replaceGameInstance(previousGame: Game, nextGame: Game, whiteUserId: string, blackUserId: string) {
-        this.games = this.games.filter((game) => game !== previousGame);
-        this.unregisterGame(previousGame);
-        this.games.push(nextGame);
-        this.registerGame(nextGame, whiteUserId, blackUserId);
-    }
-
-    private countPlyFromFen(_fen: string, game: Game) {
-        return game.board.moveNumber() * 2 - (game.board.turn() === "w" ? 0 : 1);
+    private handleDisconnectTimeout(game: Game) {
+        this.games = this.games.filter((currentGame) => currentGame !== game);
+        this.unregisterGame(game);
     }
 
     private getGameForUserId(userId: string) {

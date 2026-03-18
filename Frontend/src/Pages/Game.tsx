@@ -20,6 +20,7 @@ export const ACTION_REJECTED = "action_rejected";
 export const REMATCH_REQUEST = "rematch_request";
 export const REMATCH_STATE = "rematch_state";
 export const REMATCH_DECLINED = "rematch_declined";
+export const PLAYER_CONNECTION_STATE = "player_connection_state";
 
 type GameState = "idle" | "waiting" | "waiting_elsewhere" | "in_game";
 type PlayerColor = "white" | "black" | null;
@@ -38,12 +39,22 @@ type RematchStateType = "idle" | "requested" | "waiting" | "declined";
 type MoveColor = "white" | "black";
 type LastMove = { from: Square; to: Square } | null;
 type PromotionPiece = "q" | "r" | "b" | "n";
+type OpponentConnectionState = {
+    isReconnecting: boolean;
+    graceSeconds: number;
+    isReconnected: boolean;
+};
 
 type MoveHistoryEntry = {
     ply: number;
     san: string;
     color: MoveColor;
     moveNumber: number;
+};
+
+type InitMoveHistoryEntry = {
+    ply: number;
+    san: string;
 };
 
 type MoveHistoryRow = {
@@ -85,6 +96,14 @@ const DEFAULT_PENDING_PROMOTION: PendingPromotion = {
     to: null,
     availablePromotions: []
 };
+
+const DEFAULT_OPPONENT_CONNECTION_STATE: OpponentConnectionState = {
+    isReconnecting: false,
+    graceSeconds: 20,
+    isReconnected: false
+};
+
+const RECONNECTED_BANNER_DURATION_MS = 3000;
 
 const getPlayerDisplayName = (value: unknown, fallback: string) => {
     if (typeof value !== "string") {
@@ -133,7 +152,42 @@ function Game() {
     const [matchConclusion, setMatchConclusion] = useState<MatchConclusion>(DEFAULT_MATCH_CONCLUSION);
     const [moveHistory, setMoveHistory] = useState<MoveHistoryEntry[]>([]);
     const [pendingPromotion, setPendingPromotion] = useState<PendingPromotion>(DEFAULT_PENDING_PROMOTION);
+    const [opponentConnectionState, setOpponentConnectionState] = useState<OpponentConnectionState>(DEFAULT_OPPONENT_CONNECTION_STATE);
     const desktopHistoryRef = useRef<HTMLDivElement | null>(null);
+
+    const parseInitMoveHistory = (value: unknown): MoveHistoryEntry[] => {
+        if (!Array.isArray(value)) {
+            return [];
+        }
+
+        const parsedMoves: InitMoveHistoryEntry[] = value.flatMap((entry) => {
+            if (typeof entry !== "object" || entry === null) {
+                return [];
+            }
+
+            const maybeEntry = entry as { ply?: unknown; san?: unknown };
+            if (typeof maybeEntry.ply !== "number" || !Number.isFinite(maybeEntry.ply) || maybeEntry.ply < 1) {
+                return [];
+            }
+            if (typeof maybeEntry.san !== "string" || maybeEntry.san.length === 0) {
+                return [];
+            }
+
+            return [{
+                ply: Math.floor(maybeEntry.ply),
+                san: maybeEntry.san
+            }];
+        });
+
+        parsedMoves.sort((a, b) => a.ply - b.ply);
+
+        return parsedMoves.map((entry) => ({
+            ply: entry.ply,
+            san: entry.san,
+            color: entry.ply % 2 === 1 ? "white" : "black",
+            moveNumber: Math.ceil(entry.ply / 2)
+        }));
+    };
 
     const syncBoardStateFromChess = () => {
         setBoard(chessRef.current.board());
@@ -215,8 +269,9 @@ function Game() {
                     setOpponentPlayerName(getPlayerDisplayName(message.payload?.opponentName, "User 2"));
                     setMatchConclusion(DEFAULT_MATCH_CONCLUSION);
                     setLastMove(null);
-                    setMoveHistory([]);
+                    setMoveHistory(parseInitMoveHistory(message.payload?.moveHistory));
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
+                    setOpponentConnectionState(DEFAULT_OPPONENT_CONNECTION_STATE);
                     break;
                 case WAITING_FOR_OPPONENT:
                     setGameState("waiting");
@@ -227,6 +282,7 @@ function Game() {
                     setMyPlayerName("User 1");
                     setOpponentPlayerName("User 2");
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
+                    setOpponentConnectionState(DEFAULT_OPPONENT_CONNECTION_STATE);
                     break;
                 case ALREADY_WAITING:
                     setGameState("waiting_elsewhere");
@@ -237,6 +293,7 @@ function Game() {
                     setMyPlayerName("User 1");
                     setOpponentPlayerName("User 2");
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
+                    setOpponentConnectionState(DEFAULT_OPPONENT_CONNECTION_STATE);
                     break;
                 case ALREADY_IN_GAME:
                     setGameState("idle");
@@ -245,6 +302,7 @@ function Game() {
                     setCurrentTurn(null);
                     setCheckedKingSquare(null);
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
+                    setOpponentConnectionState(DEFAULT_OPPONENT_CONNECTION_STATE);
                     break;
                 case MATCHMAKING_CANCELLED:
                     setGameState("idle");
@@ -257,6 +315,7 @@ function Game() {
                     setMyPlayerName("User 1");
                     setOpponentPlayerName("User 2");
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
+                    setOpponentConnectionState(DEFAULT_OPPONENT_CONNECTION_STATE);
                     navigate("/");
                     break;
                 case MOVE_APPLIED:
@@ -363,6 +422,7 @@ function Game() {
                     setCheckedKingSquare(null);
                     setStatusMessage("");
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
+                    setOpponentConnectionState(DEFAULT_OPPONENT_CONNECTION_STATE);
                     setMatchConclusion({
                         isOpen: true,
                         result,
@@ -427,6 +487,25 @@ function Game() {
                         };
                     });
                     break;
+                case PLAYER_CONNECTION_STATE: {
+                    const state = message.payload?.state;
+                    const graceMs = typeof message.payload?.graceMs === "number" ? message.payload.graceMs : 20_000;
+                    const graceSeconds = Math.max(1, Math.floor(graceMs / 1000));
+                    if (state === "reconnecting") {
+                        setOpponentConnectionState({
+                            isReconnecting: true,
+                            graceSeconds,
+                            isReconnected: false
+                        });
+                    } else if (state === "reconnected") {
+                        setOpponentConnectionState({
+                            isReconnecting: false,
+                            graceSeconds: 20,
+                            isReconnected: true
+                        });
+                    }
+                    break;
+                }
             }
         };
 
@@ -444,6 +523,29 @@ function Game() {
         };
         scrollToBottom(desktopHistoryRef.current);
     }, [moveHistory]);
+
+    useEffect(() => {
+        if (!opponentConnectionState.isReconnected) {
+            return;
+        }
+
+        const timer = window.setTimeout(() => {
+            setOpponentConnectionState((previous) => {
+                if (!previous.isReconnected) {
+                    return previous;
+                }
+
+                return {
+                    ...previous,
+                    isReconnected: false
+                };
+            });
+        }, RECONNECTED_BANNER_DURATION_MS);
+
+        return () => {
+            window.clearTimeout(timer);
+        };
+    }, [opponentConnectionState.isReconnected]);
 
     if (!socket) {
         return <div>Connecting...</div>;
@@ -704,6 +806,28 @@ function Game() {
         );
     }
 
+    const getOpponentSubtitle = () => {
+        if (opponentConnectionState.isReconnecting) {
+            return `Reconnecting... (${opponentConnectionState.graceSeconds}s)`;
+        }
+        if (opponentConnectionState.isReconnected) {
+            return "Reconnected";
+        }
+        return playerColor === "white" ? "Black" : "White";
+    };
+
+    const getOpponentStatusIndicator = () => {
+        if (opponentConnectionState.isReconnecting) {
+            return <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-amber-500 animate-pulse" />;
+        }
+        if (opponentConnectionState.isReconnected) {
+            return <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-green-500" />;
+        }
+        return currentTurn === (playerColor === "white" ? "b" : "w") ? (
+            <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-green-500 animate-pulse" />
+        ) : null;
+    };
+
     return (
         <main className="h-dvh bg-[#262522] flex flex-col relative overflow-hidden pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.5rem,env(safe-area-inset-bottom))]">
             <div className="w-full flex-1 flex flex-col lg:flex-row gap-2 lg:gap-4 p-2 lg:p-4 min-h-0">
@@ -720,12 +844,10 @@ function Game() {
                         </div>
                         <div className="flex-1 min-w-0">
                             <p className="text-white text-sm sm:text-base font-semibold truncate">{opponentPlayerName}</p>
-                            <p className="text-gray-400 text-xs truncate">{playerColor === "white" ? "Black" : "White"}</p>
+                            <p className={`text-xs truncate ${opponentConnectionState.isReconnecting ? "text-amber-400" : opponentConnectionState.isReconnected ? "text-green-400" : "text-gray-400"}`}>{getOpponentSubtitle()}</p>
                         </div>
                         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                            {currentTurn === (playerColor === "white" ? "b" : "w") && (
-                                <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-green-500 animate-pulse" />
-                            )}
+                            {getOpponentStatusIndicator()}
                         </div>
                     </div>
 

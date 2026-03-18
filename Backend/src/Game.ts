@@ -1,6 +1,6 @@
 import { WebSocket } from "ws";
 import { Chess } from "chess.js";
-import { ACTION_REJECTED, GAME_OVER, INIT_GAME, MOVE_APPLIED, MOVE_REJECTED, REMATCH_DECLINED, REMATCH_STATE, STORAGE_SYNC_FAILED } from "./messages.js";
+import { ACTION_REJECTED, GAME_OVER, INIT_GAME, MOVE_APPLIED, MOVE_REJECTED, PLAYER_CONNECTION_STATE, REMATCH_DECLINED, REMATCH_STATE, STORAGE_SYNC_FAILED } from "./messages.js";
 import { appendMoveToRuntimeGame, completeRuntimeGame, initializeRuntimeGame, type RuntimeGameSnapshot } from "./runtimeGameStore.js";
 import type { AuthenticatedSocket } from "./socketTypes.js";
 
@@ -18,6 +18,13 @@ type WinnerColor = "white" | "black" | null;
 type RematchStatus = "waiting" | "starting";
 type PlayerColor = "white" | "black";
 type PromotionPiece = "q" | "r" | "b" | "n";
+type DisconnectResolution = "keep" | "remove";
+type InitMoveHistoryEntry = {
+    ply: number;
+    san: string;
+};
+
+const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS ?? 20_000);
 
 type GameOverPayload = {
     result: ResultType;
@@ -29,13 +36,12 @@ type GameOverPayload = {
 
 type GameConstructorOptions = {
     onRematchReady: (game: Game) => Promise<void>;
+    onDisconnectTimeout: (game: Game) => void;
     suppressInitMessages?: boolean;
     initialSnapshot?: RuntimeGameSnapshot;
 };
 
 export class Game {
-    public player1: AuthenticatedSocket;
-    public player2: AuthenticatedSocket;
     public board: Chess;
     private startTime: Date;
     private whitePlayer: AuthenticatedSocket;
@@ -45,8 +51,16 @@ export class Game {
     private rematchRequestedByBlack = false;
     private rematchStarting = false;
     private ply = 0;
+    private moveHistory: InitMoveHistoryEntry[] = [];
     private readonly gameId: string;
     private readonly onRematchReady: (game: Game) => Promise<void>;
+    private readonly onDisconnectTimeout: (game: Game) => void;
+    private disconnectedWhite = false;
+    private disconnectedBlack = false;
+    private whiteReconnectTimer: NodeJS.Timeout | null = null;
+    private blackReconnectTimer: NodeJS.Timeout | null = null;
+    private whiteDisconnectEpoch = 0;
+    private blackDisconnectEpoch = 0;
 
     constructor(
         player1: AuthenticatedSocket,
@@ -54,14 +68,13 @@ export class Game {
         gameId: string,
         options: GameConstructorOptions
     ) {
-        this.player1 = player1;
-        this.player2 = player2;
         this.whitePlayer = player1;
         this.blackPlayer = player2;
         this.board = new Chess();
         this.startTime = new Date();
         this.gameId = gameId;
         this.onRematchReady = options.onRematchReady;
+        this.onDisconnectTimeout = options.onDisconnectTimeout;
 
         if (options.initialSnapshot) {
             this.restoreFromSnapshot(options.initialSnapshot);
@@ -76,10 +89,12 @@ export class Game {
         player1: AuthenticatedSocket,
         player2: AuthenticatedSocket,
         gameId: string,
-        onRematchReady: (game: Game) => Promise<void>
+        onRematchReady: (game: Game) => Promise<void>,
+        onDisconnectTimeout: (game: Game) => void
     ) {
         const game = new Game(player1, player2, gameId, {
             onRematchReady,
+            onDisconnectTimeout,
             suppressInitMessages: true
         });
 
@@ -104,17 +119,19 @@ export class Game {
             whitePlayer: AuthenticatedSocket;
             blackPlayer: AuthenticatedSocket;
         },
-        onRematchReady: (game: Game) => Promise<void>
+        onRematchReady: (game: Game) => Promise<void>,
+        onDisconnectTimeout: (game: Game) => void
     ) {
         return new Game(sockets.whitePlayer, sockets.blackPlayer, snapshot.gameId, {
             onRematchReady,
+            onDisconnectTimeout,
             suppressInitMessages: true,
             initialSnapshot: snapshot
         });
     }
 
     containsPlayer(socket: AuthenticatedSocket) {
-        return this.player1 === socket || this.player2 === socket;
+        return this.whitePlayer === socket || this.blackPlayer === socket;
     }
 
     containsUserId(userId: string) {
@@ -226,6 +243,11 @@ export class Game {
             payload: moveAppliedPayload
         });
 
+        this.moveHistory.push({
+            ply: this.ply,
+            san: appliedMove.san
+        });
+
         if (this.board.isGameOver()) {
             const gameOverPayload = this.getBoardGameOverPayload();
             await this.finishGame(gameOverPayload);
@@ -274,6 +296,36 @@ export class Game {
         return this.blackPlayer;
     }
 
+    reattachPlayer(userId: string, socket: AuthenticatedSocket) {
+        if (this.whitePlayer.userId === userId) {
+            this.whitePlayer = socket;
+            this.disconnectedWhite = false;
+            this.whiteDisconnectEpoch += 1;
+            if (this.whiteReconnectTimer) {
+                clearTimeout(this.whiteReconnectTimer);
+                this.whiteReconnectTimer = null;
+            }
+            this.sendInitGameMessageToPlayer("white");
+            this.sendConnectionStateToOpponent("white", "reconnected");
+            return true;
+        }
+
+        if (this.blackPlayer.userId === userId) {
+            this.blackPlayer = socket;
+            this.disconnectedBlack = false;
+            this.blackDisconnectEpoch += 1;
+            if (this.blackReconnectTimer) {
+                clearTimeout(this.blackReconnectTimer);
+                this.blackReconnectTimer = null;
+            }
+            this.sendInitGameMessageToPlayer("black");
+            this.sendConnectionStateToOpponent("black", "reconnected");
+            return true;
+        }
+
+        return false;
+    }
+
     getGameId() {
         return this.gameId;
     }
@@ -295,13 +347,17 @@ export class Game {
         });
     }
 
-    async handleDisconnect(socket: AuthenticatedSocket) {
+    async handleDisconnect(socket: AuthenticatedSocket): Promise<DisconnectResolution> {
         if (!this.containsPlayer(socket)) {
-            return;
+            return "keep";
         }
 
         const disconnectedColor = this.getColorForSocket(socket);
-        const remainingSocket = socket === this.player1 ? this.player2 : this.player1;
+        if (!disconnectedColor) {
+            return "keep";
+        }
+
+        const remainingSocket = disconnectedColor === "white" ? this.blackPlayer : this.whitePlayer;
 
         if (this.isConcluded) {
             if (this.rematchRequestedByWhite || this.rematchRequestedByBlack) {
@@ -316,27 +372,24 @@ export class Game {
             this.rematchRequestedByWhite = false;
             this.rematchRequestedByBlack = false;
             this.rematchStarting = false;
-            return;
+            return "remove";
         }
 
-        const winnerColor: WinnerColor =
-            disconnectedColor === "white" ? "black" : disconnectedColor === "black" ? "white" : null;
-
-        await this.finishGame({
-            result: "opponent_left",
-            reason: "opponent_left",
-            winnerColor,
-            fen: this.board.fen(),
-            turn: null
-        });
+        this.markPlayerDisconnected(disconnectedColor);
+        const disconnectEpoch = this.bumpDisconnectEpoch(disconnectedColor);
+        this.sendConnectionStateToOpponent(disconnectedColor, "reconnecting");
+        this.startReconnectTimer(disconnectedColor, disconnectEpoch);
+        return "keep";
     }
 
     private restoreFromSnapshot(snapshot: RuntimeGameSnapshot) {
-        this.whitePlayer = this.player1;
-        this.blackPlayer = this.player2;
         this.board = new Chess(snapshot.currentFen);
         this.startTime = new Date(snapshot.startedAt);
         this.ply = snapshot.ply;
+        this.moveHistory = snapshot.moves.map((move) => ({
+            ply: move.ply,
+            san: move.san
+        }));
         this.isConcluded = snapshot.status !== "active";
     }
 
@@ -350,7 +403,8 @@ export class Game {
                 fen: initialFen,
                 turn: initialTurn,
                 playerName: this.whitePlayer.userName,
-                opponentName: this.blackPlayer.userName
+                opponentName: this.blackPlayer.userName,
+                moveHistory: this.moveHistory
             }
         });
         this.sendToSocket(this.blackPlayer, {
@@ -360,7 +414,24 @@ export class Game {
                 fen: initialFen,
                 turn: initialTurn,
                 playerName: this.blackPlayer.userName,
-                opponentName: this.whitePlayer.userName
+                opponentName: this.whitePlayer.userName,
+                moveHistory: this.moveHistory
+            }
+        });
+    }
+
+    private sendInitGameMessageToPlayer(color: PlayerColor) {
+        const socket = color === "white" ? this.whitePlayer : this.blackPlayer;
+        const opponent = color === "white" ? this.blackPlayer : this.whitePlayer;
+        this.sendToSocket(socket, {
+            type: INIT_GAME,
+            payload: {
+                color,
+                fen: this.board.fen(),
+                turn: this.board.turn(),
+                playerName: socket.userName,
+                opponentName: opponent.userName,
+                moveHistory: this.moveHistory
             }
         });
     }
@@ -445,6 +516,7 @@ export class Game {
         }
 
         this.isConcluded = true;
+        this.clearReconnectTimers();
         this.rematchStarting = false;
         this.rematchRequestedByWhite = false;
         this.rematchRequestedByBlack = false;
@@ -509,9 +581,109 @@ export class Game {
         return null;
     }
 
+    private markPlayerDisconnected(color: PlayerColor) {
+        if (color === "white") {
+            this.disconnectedWhite = true;
+            return;
+        }
+        this.disconnectedBlack = true;
+    }
+
+    private startReconnectTimer(color: PlayerColor, disconnectEpoch: number) {
+        const timer = setTimeout(() => {
+            void this.handleReconnectTimeout(color, disconnectEpoch);
+        }, RECONNECT_GRACE_MS);
+
+        if (color === "white") {
+            if (this.whiteReconnectTimer) {
+                clearTimeout(this.whiteReconnectTimer);
+            }
+            this.whiteReconnectTimer = timer;
+            return;
+        }
+
+        if (this.blackReconnectTimer) {
+            clearTimeout(this.blackReconnectTimer);
+        }
+        this.blackReconnectTimer = timer;
+    }
+
+    private async handleReconnectTimeout(color: PlayerColor, expectedEpoch: number) {
+        if (this.isConcluded) {
+            return;
+        }
+
+        if (color === "white") {
+            if (this.whiteDisconnectEpoch !== expectedEpoch) {
+                return;
+            }
+            this.whiteReconnectTimer = null;
+            if (!this.disconnectedWhite) {
+                return;
+            }
+        } else {
+            if (this.blackDisconnectEpoch !== expectedEpoch) {
+                return;
+            }
+            this.blackReconnectTimer = null;
+            if (!this.disconnectedBlack) {
+                return;
+            }
+        }
+
+        const winnerColor: WinnerColor = color === "white" ? "black" : "white";
+        await this.finishGame({
+            result: "opponent_left",
+            reason: "opponent_left",
+            winnerColor,
+            fen: this.board.fen(),
+            turn: null
+        });
+        if (this.isConcluded) {
+            this.onDisconnectTimeout(this);
+        }
+    }
+
+    private clearReconnectTimers() {
+        if (this.whiteReconnectTimer) {
+            clearTimeout(this.whiteReconnectTimer);
+            this.whiteReconnectTimer = null;
+        }
+        if (this.blackReconnectTimer) {
+            clearTimeout(this.blackReconnectTimer);
+            this.blackReconnectTimer = null;
+        }
+        this.whiteDisconnectEpoch += 1;
+        this.blackDisconnectEpoch += 1;
+        this.disconnectedWhite = false;
+        this.disconnectedBlack = false;
+    }
+
+    private bumpDisconnectEpoch(color: PlayerColor) {
+        if (color === "white") {
+            this.whiteDisconnectEpoch += 1;
+            return this.whiteDisconnectEpoch;
+        }
+        this.blackDisconnectEpoch += 1;
+        return this.blackDisconnectEpoch;
+    }
+
+    private sendConnectionStateToOpponent(disconnectedColor: PlayerColor, state: "reconnecting" | "reconnected") {
+        const disconnectedPlayer = disconnectedColor === "white" ? this.whitePlayer : this.blackPlayer;
+        const opponent = disconnectedColor === "white" ? this.blackPlayer : this.whitePlayer;
+        this.sendToSocket(opponent, {
+            type: PLAYER_CONNECTION_STATE,
+            payload: {
+                userId: disconnectedPlayer.userId,
+                state,
+                graceMs: RECONNECT_GRACE_MS
+            }
+        });
+    }
+
     private sendToBoth(message: object) {
-        this.sendToSocket(this.player1, message);
-        this.sendToSocket(this.player2, message);
+        this.sendToSocket(this.whitePlayer, message);
+        this.sendToSocket(this.blackPlayer, message);
     }
 
     private sendToSocket(socket: AuthenticatedSocket, message: object) {
