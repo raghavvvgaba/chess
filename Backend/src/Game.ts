@@ -1,6 +1,6 @@
 import { WebSocket } from "ws";
 import { Chess } from "chess.js";
-import { GAME_OVER, INIT_GAME, MOVE_APPLIED, MOVE_REJECTED, REMATCH_DECLINED, REMATCH_STATE, STORAGE_SYNC_FAILED } from "./messages.js";
+import { ACTION_REJECTED, GAME_OVER, INIT_GAME, MOVE_APPLIED, MOVE_REJECTED, REMATCH_DECLINED, REMATCH_STATE, STORAGE_SYNC_FAILED } from "./messages.js";
 import { appendMoveToRuntimeGame, completeRuntimeGame, initializeRuntimeGame, type RuntimeGameSnapshot } from "./runtimeGameStore.js";
 import type { AuthenticatedSocket } from "./socketTypes.js";
 
@@ -238,11 +238,13 @@ export class Game {
 
     requestRematch(socket: AuthenticatedSocket) {
         if (!this.isConcluded) {
+            this.sendActionRejected(socket, "game_not_concluded");
             return;
         }
 
         const color = this.getColorForSocket(socket);
         if (!color) {
+            this.sendActionRejected(socket, "not_game_participant");
             return;
         }
 
@@ -311,6 +313,9 @@ export class Game {
                     }
                 });
             }
+            this.rematchRequestedByWhite = false;
+            this.rematchRequestedByBlack = false;
+            this.rematchStarting = false;
             return;
         }
 
@@ -483,6 +488,13 @@ export class Game {
 
         this.sendToSocket(socket, {
             type: STORAGE_SYNC_FAILED,
+            payload: { reason }
+        });
+    }
+
+    private sendActionRejected(socket: AuthenticatedSocket, reason: string) {
+        this.sendToSocket(socket, {
+            type: ACTION_REJECTED,
             payload: { reason }
         });
     }

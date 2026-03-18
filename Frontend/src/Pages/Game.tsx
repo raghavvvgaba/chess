@@ -16,6 +16,7 @@ export const MOVE_APPLIED = "move_applied";
 export const MOVE_REJECTED = "move_rejected";
 export const INVALID_MESSAGE = "invalid_message";
 export const STORAGE_SYNC_FAILED = "storage_sync_failed";
+export const ACTION_REJECTED = "action_rejected";
 export const REMATCH_REQUEST = "rematch_request";
 export const REMATCH_STATE = "rematch_state";
 export const REMATCH_DECLINED = "rematch_declined";
@@ -172,6 +173,25 @@ function Game() {
             return "Rematch declined by opponent.";
         };
 
+        const getActionRejectedMessage = (reason: string) => {
+            if (reason === "not_queue_owner") {
+                return "Matchmaking is owned by another tab.";
+            }
+            if (reason === "not_in_matchmaking") {
+                return "You are not currently in matchmaking.";
+            }
+            if (reason === "not_in_game") {
+                return "You are not currently in a game.";
+            }
+            if (reason === "not_game_participant") {
+                return "This tab is not the active participant for that game.";
+            }
+            if (reason === "game_not_concluded") {
+                return "Rematch is only available after the game ends.";
+            }
+            return "Action rejected by server.";
+        };
+
         socket.onmessage = (event) => {
             const message = JSON.parse(event.data);
             console.log(message);
@@ -295,6 +315,10 @@ function Game() {
                             ? "Game result could not be saved right now. Please wait and try again."
                             : "Move could not be saved right now. Please try again."
                     );
+                    setPendingPromotion(DEFAULT_PENDING_PROMOTION);
+                    break;
+                case ACTION_REJECTED:
+                    setStatusMessage(getActionRejectedMessage(message.payload?.reason));
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
                     break;
                 case GAME_OVER: {

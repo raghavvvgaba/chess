@@ -1,5 +1,4 @@
-import { Chess } from "chess.js";
-import { ALREADY_IN_GAME, ALREADY_WAITING, CANCEL_MATCHMAKING, INIT_GAME, INVALID_MESSAGE, MATCHMAKING_CANCELLED, MOVE, MOVE_REJECTED, REMATCH_DECLINED, REMATCH_REQUEST, WAITING_FOR_OPPONENT } from "./messages.js";
+import { ALREADY_IN_GAME, ALREADY_WAITING, ACTION_REJECTED, CANCEL_MATCHMAKING, INIT_GAME, INVALID_MESSAGE, MATCHMAKING_CANCELLED, MOVE, MOVE_REJECTED, REMATCH_DECLINED, REMATCH_REQUEST, WAITING_FOR_OPPONENT } from "./messages.js";
 import { Game } from "./Game.js";
 import { createGame } from "./gameStore.js";
 import { getActiveRuntimeGameIds, getRuntimeGameSnapshot } from "./runtimeGameStore.js";
@@ -325,28 +324,23 @@ export class GameManager {
                     return;
                 }
                 if (this.isUserQueued(socket.userId)) {
-                    socket.send(JSON.stringify({
-                        type: ALREADY_WAITING
-                    }));
+                    this.sendActionRejected(socket, "not_queue_owner");
                     return;
                 }
-                socket.send(JSON.stringify({
-                    type: MATCHMAKING_CANCELLED
-                }));
+                this.sendActionRejected(socket, "not_in_matchmaking");
                 return;
             }
 
             if (message.type === MOVE) {
                 const game = this.getGameForUserId(socket.userId);
                 if (game) {
+                    if (!game.containsPlayer(socket)) {
+                        this.sendActionRejected(socket, "not_game_participant");
+                        return;
+                    }
                     await game.makeMove(socket, message.payload.move);
                 } else {
-                    socket.send(JSON.stringify({
-                        type: MOVE_REJECTED,
-                        payload: {
-                            reason: "game_not_found"
-                        }
-                    }));
+                    this.sendActionRejected(socket, "not_in_game");
                 }
                 return;
             }
@@ -354,15 +348,13 @@ export class GameManager {
             if (message.type === REMATCH_REQUEST) {
                 const game = this.getGameForUserId(socket.userId);
                 if (game) {
+                    if (!game.containsPlayer(socket)) {
+                        this.sendActionRejected(socket, "not_game_participant");
+                        return;
+                    }
                     game.requestRematch(socket);
                 } else {
-                    socket.send(JSON.stringify({
-                        type: REMATCH_DECLINED,
-                        payload: {
-                            by: "system",
-                            reason: "expired"
-                        }
-                    }));
+                    this.sendActionRejected(socket, "not_in_game");
                 }
             }
         });
@@ -427,5 +419,12 @@ export class GameManager {
                 this.activeGameByUserId.delete(userId);
             }
         }
+    }
+
+    private sendActionRejected(socket: AuthenticatedSocket, reason: string) {
+        socket.send(JSON.stringify({
+            type: ACTION_REJECTED,
+            payload: { reason }
+        }));
     }
 }

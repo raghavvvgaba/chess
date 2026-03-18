@@ -10,6 +10,7 @@ export const MOVE_APPLIED = "move_applied";
 export const MOVE_REJECTED = "move_rejected";
 export const INVALID_MESSAGE = "invalid_message";
 export const STORAGE_SYNC_FAILED = "storage_sync_failed";
+export const ACTION_REJECTED = "action_rejected";
 export const REMATCH_REQUEST = "rematch_request";
 export const REMATCH_STATE = "rematch_state";
 export const REMATCH_DECLINED = "rematch_declined";
