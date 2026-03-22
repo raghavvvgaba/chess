@@ -75,6 +75,60 @@ body {
   opacity: 0.5;
 }
 
+.bot-page {
+  background:
+    radial-gradient(circle at 14% 16%, rgba(210, 165, 114, 0.18), transparent 34%),
+    radial-gradient(circle at 86% 12%, rgba(144, 182, 120, 0.15), transparent 32%),
+    radial-gradient(circle at 74% 82%, rgba(120, 152, 186, 0.1), transparent 28%),
+    linear-gradient(140deg, #110d0b 0%, #17110d 46%, #1d1511 100%);
+}
+
+.bot-page__mesh {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 246, 233, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 246, 233, 0.028) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(circle at center, black 28%, transparent 88%);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.bot-page__grain {
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.075) 0.55px, transparent 1px);
+  background-size: 3px 3px;
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+/* Grandmaster's Ledger specific styles */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.bg-gradient-gold {
+  background: linear-gradient(135deg, #e9c176 0%, #9f7e3a 100%);
+}
+
+.glass-obsidian {
+  background-color: rgba(53, 52, 54, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.tonal-shift {
+  background-color: #0e0e0f;
+}
+
+.btn-glow-hover:hover {
+  box-shadow: 0 0 30px rgba(233, 193, 118, 0.4);
+}
+
 @keyframes drift {
   0%,
   100% {
@@ -82,5 +136,116 @@ body {
   }
   50% {
     transform: translateY(-9px);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes glow {
+  from {
+    box-shadow: 0 0 10px #e9c176, 0 0 20px #e9c176, 0 0 30px #9f7e3a;
+  }
+  to {
+    box-shadow: 0 0 20px #e9c176, 0 0 40px #e9c176, 0 0 60px #9f7e3a;
+  }
+}
+
+.animate-glow {
+  animation: glow 2s ease-in-out infinite alternate;
+}
+
+/* Font families for Grandmaster's Ledger design */
+.font-headline {
+  font-family: "Noto Serif", serif;
+}
+
+.font-body {
+  font-family: "Manrope", sans-serif;
+}
+
+.font-label {
+  font-family: "Manrope", sans-serif;
+}
+
+/* Bot Setup Page Styles */
+.bot-setup-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.bot-setup-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 250ms ease;
+}
+
+.bot-setup-card:hover::before {
+  opacity: 0.5;
+}
+
+.bot-setup-card--active::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  border-radius: 1.6rem;
+  opacity: 0.6;
+  box-shadow:
+    0 0 0 1px rgba(210, 165, 114, 0.2),
+    0 8px 32px rgba(210, 165, 114, 0.08),
+    0 0 48px rgba(210, 165, 114, 0.04);
+}
+
+.bot-setup-card--active:hover::before {
+  opacity: 0.8;
+  box-shadow:
+    0 0 0 1px rgba(210, 165, 114, 0.25),
+    0 12px 40px rgba(210, 165, 114, 0.12),
+    0 0 60px rgba(210, 165, 114, 0.06);
+}
+
+.bot-setup-btn--primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.bot-setup-btn--primary:disabled {
+  transform: none !important;
+}
+
+.bot-setup-btn--secondary:active {
+  transform: translateY(0);
+}
+
+/* Smooth transitions for better mobile feel */
+@media (prefers-reduced-motion: no-preference) {
+  .bot-setup-card,
+  .bot-setup-card--active,
+  .bot-setup-btn--primary,
+  .bot-setup-btn--secondary {
+    transition-property: all;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bot-setup-card,
+  .bot-setup-card--active,
+  .bot-setup-btn--primary,
+  .bot-setup-btn--secondary {
+    transition: none;
   }
 }

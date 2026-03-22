@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Chess, type Square } from "chess.js";
 import { useNavigate } from "react-router";
 import ChessBoard from "../components/ChessBoard";
+import MatchConclusionModal from "../components/game/MatchConclusionModal";
+import PromotionModal from "../components/game/PromotionModal";
 import useSocket from "../hooks/useSocket";
 
 export const INIT_GAME = "init_game";
@@ -745,6 +747,14 @@ function Game() {
         return "Knight";
     };
 
+    const promotionChoices = (["q", "r", "b", "n"] as PromotionPiece[])
+        .filter((piece) => pendingPromotion.availablePromotions.includes(piece))
+        .map((piece) => ({
+            id: piece,
+            label: getPromotionLabel(piece),
+            imageSrc: `/Pieces/${playerColor === "black" ? piece : `w${piece}`}.png`
+        }));
+
     const handleStartGame = () => {
         if (gameState !== "idle") {
             return;
@@ -1034,40 +1044,12 @@ function Game() {
                 </aside>
             </div>
 
-            {pendingPromotion.isOpen && !matchConclusion.isOpen && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                    <section className="w-full max-w-sm bg-[#2f2e2b] border border-[#5f5b53] rounded-2xl p-6 text-center text-white shadow-2xl">
-                        <h2 className="text-2xl font-extrabold mb-2">Choose Promotion</h2>
-                        <p className="text-sm text-gray-300 mb-5">Select the piece for your pawn promotion.</p>
-
-                        <div className="grid grid-cols-2 gap-3 mb-5">
-                            {(["q", "r", "b", "n"] as PromotionPiece[])
-                                .filter((piece) => pendingPromotion.availablePromotions.includes(piece))
-                                .map((piece) => (
-                                    <button
-                                        key={piece}
-                                        onClick={() => handleSelectPromotion(piece)}
-                                        className="bg-[#3a3936] hover:bg-[#4a4945] border border-[#5f5b53] rounded-xl px-3 py-3 flex flex-col items-center gap-2 transition-colors"
-                                    >
-                                        <img
-                                            className="w-10 h-10 object-contain"
-                                            src={`/Pieces/${playerColor === "black" ? piece : `w${piece}`}.png`}
-                                            alt={getPromotionLabel(piece)}
-                                        />
-                                        <span className="text-sm font-semibold">{getPromotionLabel(piece)}</span>
-                                    </button>
-                                ))}
-                        </div>
-
-                        <button
-                            onClick={handleCancelPromotion}
-                            className="w-full bg-[#3c3b38] hover:bg-[#4a4945] text-white font-bold px-5 py-2.5 rounded-xl transition-colors"
-                        >
-                            Cancel
-                        </button>
-                    </section>
-                </div>
-            )}
+            <PromotionModal
+                isOpen={pendingPromotion.isOpen && !matchConclusion.isOpen}
+                choices={promotionChoices}
+                onSelect={(choiceId) => handleSelectPromotion(choiceId as PromotionPiece)}
+                onCancel={handleCancelPromotion}
+            />
 
             {quitDialogOpen && !matchConclusion.isOpen && (
                 <div
@@ -1106,37 +1088,25 @@ function Game() {
                 </div>
             )}
 
-            {matchConclusion.isOpen && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
-                    <section className="w-full max-w-md bg-[#2f2e2b] border border-[#5f5b53] rounded-2xl p-8 text-center text-white shadow-2xl animate-[fadeIn_.2s_ease-out]">
-                        <div className="inline-flex items-center justify-center px-4 py-1 rounded-full bg-[#b58863] text-sm font-bold tracking-wide mb-5">
-                            Match Concluded
-                        </div>
-                        <h2 className="text-4xl font-extrabold mb-3">{getConclusionTitle()}</h2>
-                        <p className="text-gray-200 mb-6">{getConclusionSubtitle()}</p>
-
-                        {matchConclusion.rematchMessage && (
-                            <p className="text-sm text-gray-300 mb-6">{matchConclusion.rematchMessage}</p>
-                        )}
-
-                        <div className="flex flex-col sm:flex-row gap-3">
-                            <button
-                                onClick={handleRematchRequest}
-                                disabled={isRematchButtonDisabled}
-                                className={`flex-1 font-bold px-5 py-3 rounded-xl transition-colors ${isRematchButtonDisabled ? "bg-[#6e614f] text-gray-200 cursor-not-allowed" : "bg-[#b58863] hover:bg-[#a0764b] text-white"}`}
-                            >
-                                {getRematchButtonLabel()}
-                            </button>
-                            <button
-                                onClick={handleGoHome}
-                                className="flex-1 bg-[#3c3b38] hover:bg-[#4a4945] text-white font-bold px-5 py-3 rounded-xl transition-colors"
-                            >
-                                Home
-                            </button>
-                        </div>
-                    </section>
-                </div>
-            )}
+            <MatchConclusionModal
+                isOpen={matchConclusion.isOpen}
+                title={getConclusionTitle()}
+                subtitle={getConclusionSubtitle()}
+                extraContent={matchConclusion.rematchMessage ? <p className="text-sm text-gray-300">{matchConclusion.rematchMessage}</p> : undefined}
+                actions={[
+                    {
+                        label: getRematchButtonLabel(),
+                        onClick: handleRematchRequest,
+                        disabled: isRematchButtonDisabled,
+                        className: `flex-1 font-bold px-5 py-3 rounded-xl transition-colors ${isRematchButtonDisabled ? "bg-[#6e614f] text-gray-200 cursor-not-allowed" : "bg-[#b58863] hover:bg-[#a0764b] text-white"}`
+                    },
+                    {
+                        label: "Home",
+                        onClick: handleGoHome,
+                        className: "flex-1 bg-[#3c3b38] hover:bg-[#4a4945] text-white font-bold px-5 py-3 rounded-xl transition-colors"
+                    }
+                ]}
+            />
         </main>
     );
 }
