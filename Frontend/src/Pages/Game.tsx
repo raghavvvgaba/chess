@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Chess, type Square } from "chess.js";
 import { useNavigate, useSearchParams, useLocation } from "react-router";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import ChessBoard from "../components/ChessBoard";
 import MatchConclusionModal from "../components/game/MatchConclusionModal";
 import PromotionModal from "../components/game/PromotionModal";
@@ -26,6 +26,8 @@ export const REMATCH_STATE = "rematch_state";
 export const REMATCH_DECLINED = "rematch_declined";
 export const PLAYER_CONNECTION_STATE = "player_connection_state";
 export const QUIT_GAME = "quit_game";
+export const RECONNECT_GAME = "reconnect_game";
+export const LEAVE_GAME_VIEW = "leave_game_view";
 
 type GameState = "idle" | "waiting" | "waiting_elsewhere" | "in_game";
 type PlayerColor = "white" | "black" | null;
@@ -148,6 +150,7 @@ function Game() {
     const [searchParams] = useSearchParams();
     const socket = useSocket();
     const roomCode = normalizeRoomCode(searchParams.get("room"));
+    const initialGameData = (location.state as { initialGameData?: unknown } | null)?.initialGameData;
     const chessRef = useRef(new Chess());
     const [board, setBoard] = useState(chessRef.current.board());
     const [gameState, setGameState] = useState<GameState>("idle");
@@ -168,6 +171,12 @@ function Game() {
     const [connectionNowMs, setConnectionNowMs] = useState(() => Date.now());
     const desktopHistoryRef = useRef<HTMLDivElement | null>(null);
     const mobileHistoryRef = useRef<HTMLDivElement | null>(null);
+    const reconnectRequestSentRef = useRef(false);
+    const reconnectRedirectTimerRef = useRef<number | null>(null);
+    const reconnectRequestSocketRef = useRef<WebSocket | null>(null);
+    const leaveGameViewSentRef = useRef(false);
+    const latestGameStateRef = useRef<GameState>("idle");
+    const latestSocketRef = useRef<WebSocket | null>(null);
 
     const initializeGameFromPayload = (payload: any) => {
         chessRef.current = new Chess();
@@ -197,11 +206,68 @@ function Game() {
     };
 
     useEffect(() => {
-        if (location.state?.initialGameData) {
-            initializeGameFromPayload(location.state.initialGameData);
+        if (initialGameData) {
+            initializeGameFromPayload(initialGameData);
+            reconnectRequestSentRef.current = false;
             // Clear location state to prevent re-initialization on back nav etc
             navigate(location.pathname + location.search, { replace: true, state: {} });
         }
+    }, [initialGameData, location.pathname, location.search, navigate]);
+
+    useEffect(() => {
+        return () => {
+            if (reconnectRedirectTimerRef.current !== null) {
+                window.clearTimeout(reconnectRedirectTimerRef.current);
+                reconnectRedirectTimerRef.current = null;
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            return;
+        }
+        if (initialGameData) {
+            return;
+        }
+        if (reconnectRequestSocketRef.current !== socket) {
+            reconnectRequestSocketRef.current = socket;
+            reconnectRequestSentRef.current = false;
+        }
+        if (gameState === "in_game") {
+            return;
+        }
+        if (reconnectRequestSentRef.current) {
+            return;
+        }
+
+        reconnectRequestSentRef.current = true;
+        setStatusMessage("Reconnecting to active match...");
+        socket.send(JSON.stringify({
+            type: RECONNECT_GAME
+        }));
+    }, [socket, gameState, initialGameData]);
+
+    useEffect(() => {
+        latestGameStateRef.current = gameState;
+        latestSocketRef.current = socket;
+    }, [gameState, socket]);
+
+    useEffect(() => {
+        return () => {
+            const activeSocket = latestSocketRef.current;
+            if (
+                latestGameStateRef.current === "in_game" &&
+                activeSocket &&
+                activeSocket.readyState === WebSocket.OPEN &&
+                !leaveGameViewSentRef.current
+            ) {
+                leaveGameViewSentRef.current = true;
+                activeSocket.send(JSON.stringify({
+                    type: LEAVE_GAME_VIEW
+                }));
+            }
+        };
     }, []);
 
     const parseInitMoveHistory = (value: unknown): MoveHistoryEntry[] => {
@@ -389,6 +455,16 @@ function Game() {
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
                     break;
                 case ACTION_REJECTED:
+                    if (message.payload?.reason === "not_in_game" && gameState !== "in_game") {
+                        setStatusMessage("No active match found. Returning to dashboard...");
+                        if (reconnectRedirectTimerRef.current !== null) {
+                            window.clearTimeout(reconnectRedirectTimerRef.current);
+                        }
+                        reconnectRedirectTimerRef.current = window.setTimeout(() => {
+                            navigate("/", { replace: true, state: { reconnectExpired: true } });
+                        }, 900);
+                        break;
+                    }
                     setStatusMessage(getActionRejectedMessage(message.payload?.reason));
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
                     setQuitRequested(false);
@@ -885,6 +961,12 @@ function Game() {
 
     const handleGoHome = () => {
         setPendingPromotion(DEFAULT_PENDING_PROMOTION);
+        if (socket && socket.readyState === WebSocket.OPEN && !leaveGameViewSentRef.current) {
+            leaveGameViewSentRef.current = true;
+            socket.send(JSON.stringify({
+                type: LEAVE_GAME_VIEW
+            }));
+        }
         navigate("/", { replace: true });
     };
 

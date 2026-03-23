@@ -1,4 +1,4 @@
-import { ALREADY_IN_GAME, ALREADY_WAITING, ACTION_REJECTED, CANCEL_MATCHMAKING, INIT_GAME, INVALID_MESSAGE, MATCHMAKING_CANCELLED, MOVE, QUIT_GAME, REMATCH_REQUEST, WAITING_FOR_OPPONENT } from "./messages.js";
+import { ALREADY_IN_GAME, ALREADY_WAITING, ACTION_REJECTED, CANCEL_MATCHMAKING, INIT_GAME, INVALID_MESSAGE, LEAVE_GAME_VIEW, MATCHMAKING_CANCELLED, MOVE, QUIT_GAME, RECONNECT_GAME, REMATCH_REQUEST, WAITING_FOR_OPPONENT } from "./messages.js";
 import { Game } from "./Game.js";
 import { createGame } from "./gameStore.js";
 import { getActiveRuntimeGameIds, getRuntimeGameSnapshot } from "./runtimeGameStore.js";
@@ -8,6 +8,8 @@ type ClientInitGameMessage = { type: typeof INIT_GAME };
 type ClientCancelMatchmakingMessage = { type: typeof CANCEL_MATCHMAKING };
 type ClientRematchRequestMessage = { type: typeof REMATCH_REQUEST };
 type ClientQuitGameMessage = { type: typeof QUIT_GAME };
+type ClientReconnectGameMessage = { type: typeof RECONNECT_GAME };
+type ClientLeaveGameViewMessage = { type: typeof LEAVE_GAME_VIEW };
 type ClientMoveMessage = {
     type: typeof MOVE;
     payload: {
@@ -22,6 +24,8 @@ type ClientMoveMessage = {
 type ClientMessage =
     | ClientInitGameMessage
     | ClientCancelMatchmakingMessage
+    | ClientReconnectGameMessage
+    | ClientLeaveGameViewMessage
     | ClientRematchRequestMessage
     | ClientQuitGameMessage
     | ClientMoveMessage;
@@ -32,6 +36,8 @@ type InvalidMessageReason =
     | "unknown_message_type"
     | "invalid_init_game_payload"
     | "invalid_cancel_matchmaking_payload"
+    | "invalid_reconnect_game_payload"
+    | "invalid_leave_game_view_payload"
     | "invalid_rematch_request_payload"
     | "invalid_quit_game_payload"
     | "invalid_move_payload";
@@ -69,6 +75,20 @@ function parseClientMessage(rawData: string): { ok: true; message: ClientMessage
             return { ok: false, reason: "invalid_cancel_matchmaking_payload" };
         }
         return { ok: true, message: { type: CANCEL_MATCHMAKING } };
+    }
+
+    if (parsed.type === RECONNECT_GAME) {
+        if (typeof parsed.payload !== "undefined") {
+            return { ok: false, reason: "invalid_reconnect_game_payload" };
+        }
+        return { ok: true, message: { type: RECONNECT_GAME } };
+    }
+
+    if (parsed.type === LEAVE_GAME_VIEW) {
+        if (typeof parsed.payload !== "undefined") {
+            return { ok: false, reason: "invalid_leave_game_view_payload" };
+        }
+        return { ok: true, message: { type: LEAVE_GAME_VIEW } };
     }
 
     if (parsed.type === REMATCH_REQUEST) {
@@ -136,7 +156,7 @@ export class GameManager {
 
     addUser(socket: AuthenticatedSocket) {
         this.users.push(socket);
-        const activeGame = this.getGameForUserId(socket.userId);
+        const activeGame = this.getActiveGameForUserId(socket.userId);
         if (activeGame) {
             activeGame.reattachPlayer(socket.userId, socket);
             this.addHandler(socket);
@@ -163,9 +183,14 @@ export class GameManager {
 
             const existingGame = this.games.find((game) => game.getGameId() === gameId);
             if (existingGame) {
+                this.cleanupConcludedGameForUser(snapshot.whiteUserId);
+                this.cleanupConcludedGameForUser(snapshot.blackUserId);
                 this.registerGame(existingGame, snapshot.whiteUserId, snapshot.blackUserId);
                 continue;
             }
+
+            this.cleanupConcludedGameForUser(snapshot.whiteUserId);
+            this.cleanupConcludedGameForUser(snapshot.blackUserId);
 
             const game = Game.fromRuntimeSnapshot(snapshot, {
                 whitePlayer,
@@ -209,6 +234,7 @@ export class GameManager {
 
             const message = parsedMessage.message;
             if (message.type === INIT_GAME) {
+                this.cleanupConcludedGameForUser(socket.userId);
                 if (this.pendingUser === socket || this.isUserQueued(socket.userId)) {
                     socket.send(JSON.stringify({
                         type: ALREADY_WAITING
@@ -223,6 +249,7 @@ export class GameManager {
                 }
                 if (this.pendingUser) {
                     const waitingPlayer = this.pendingUser;
+                    this.cleanupConcludedGameForUser(waitingPlayer.userId);
                     if (waitingPlayer.userId === socket.userId) {
                         socket.send(JSON.stringify({
                             type: ALREADY_WAITING
@@ -289,14 +316,57 @@ export class GameManager {
                 return;
             }
 
+            if (message.type === RECONNECT_GAME) {
+                const game = this.getGameForUserId(socket.userId);
+                if (!game) {
+                    this.sendActionRejected(socket, "not_in_game");
+                    return;
+                }
+
+                if (game.isGameConcluded()) {
+                    this.removeConcludedGame(game);
+                    this.sendActionRejected(socket, "not_in_game");
+                    return;
+                }
+
+                try {
+                    game.reattachPlayer(socket.userId, socket);
+                } catch (error) {
+                    console.error("Failed to reattach player:", error);
+                    this.sendActionRejected(socket, "reconnect_failed");
+                }
+                return;
+            }
+
+            if (message.type === LEAVE_GAME_VIEW) {
+                const game = this.getGameForUserId(socket.userId);
+                if (!game) {
+                    return;
+                }
+                if (game.isGameConcluded()) {
+                    this.removeConcludedGame(game);
+                    return;
+                }
+                game.markPlayerAway(socket.userId);
+                return;
+            }
+
             if (message.type === MOVE) {
                 const game = this.getGameForUserId(socket.userId);
                 if (game) {
+                    if (game.isGameConcluded()) {
+                        this.removeConcludedGame(game);
+                        this.sendActionRejected(socket, "not_in_game");
+                        return;
+                    }
                     if (!game.containsPlayer(socket)) {
                         this.sendActionRejected(socket, "not_game_participant");
                         return;
                     }
                     await game.makeMove(socket, message.payload.move);
+                    if (game.isGameConcluded()) {
+                        this.removeConcludedGame(game);
+                    }
                 } else {
                     this.sendActionRejected(socket, "not_in_game");
                 }
@@ -306,6 +376,11 @@ export class GameManager {
             if (message.type === REMATCH_REQUEST) {
                 const game = this.getGameForUserId(socket.userId);
                 if (game) {
+                    if (game.isGameConcluded()) {
+                        this.removeConcludedGame(game);
+                        this.sendActionRejected(socket, "not_in_game");
+                        return;
+                    }
                     if (!game.containsPlayer(socket)) {
                         this.sendActionRejected(socket, "not_game_participant");
                         return;
@@ -319,14 +394,23 @@ export class GameManager {
             if (message.type === QUIT_GAME) {
                 const game = this.getGameForUserId(socket.userId);
                 if (game) {
+                    if (game.isGameConcluded()) {
+                        this.removeConcludedGame(game);
+                        this.sendActionRejected(socket, "not_in_game");
+                        return;
+                    }
                     if (!game.containsPlayer(socket)) {
                         this.sendActionRejected(socket, "not_game_participant");
                         return;
                     }
                     await game.quitGame(socket);
+                    if (game.isGameConcluded()) {
+                        this.removeConcludedGame(game);
+                    }
                 } else {
                     this.sendActionRejected(socket, "not_in_game");
                 }
+                return;
             }
         });
     }
@@ -374,6 +458,28 @@ export class GameManager {
         return this.activeGameByUserId.has(userId);
     }
 
+    private getActiveGameForUserId(userId: string) {
+        const game = this.getGameForUserId(userId);
+        if (!game) {
+            return null;
+        }
+        if (game.isGameConcluded()) {
+            this.removeConcludedGame(game);
+            return null;
+        }
+        return game;
+    }
+
+    private cleanupConcludedGameForUser(userId: string) {
+        const game = this.getGameForUserId(userId);
+        if (!game) {
+            return;
+        }
+        if (game.isGameConcluded()) {
+            this.removeConcludedGame(game);
+        }
+    }
+
     private registerGame(game: Game, whiteUserId: string, blackUserId: string) {
         this.activeGameByUserId.set(whiteUserId, game);
         this.activeGameByUserId.set(blackUserId, game);
@@ -385,6 +491,11 @@ export class GameManager {
                 this.activeGameByUserId.delete(userId);
             }
         }
+    }
+
+    private removeConcludedGame(game: Game) {
+        this.games = this.games.filter((currentGame) => currentGame !== game);
+        this.unregisterGame(game);
     }
 
     private sendActionRejected(socket: AuthenticatedSocket, reason: string) {

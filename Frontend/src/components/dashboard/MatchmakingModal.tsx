@@ -5,9 +5,11 @@ type MatchmakingModalProps = {
   onClose: () => void;
   onStart: () => void;
   onCancel: () => void;
+  onReconnect: () => void;
   gameState: "idle" | "waiting";
   statusMessage?: string;
   cancelRequested: boolean;
+  showReconnectAction: boolean;
 };
 
 function MatchmakingModal({
@@ -15,9 +17,11 @@ function MatchmakingModal({
   onClose,
   onStart,
   onCancel,
+  onReconnect,
   gameState,
   statusMessage,
   cancelRequested,
+  showReconnectAction,
 }: MatchmakingModalProps) {
   if (!isOpen) return null;
 
@@ -55,13 +59,28 @@ function MatchmakingModal({
             </p>
           </div>
 
-          {gameState === "idle" ? (
+          {gameState === "idle" && !showReconnectAction ? (
             <button
               onClick={onStart}
               className="w-full py-4 bg-gradient-gold rounded-2xl text-[#00184a] font-bold text-lg hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-[#e9c176]/10 btn-glow-hover"
             >
               Start Finding Match
             </button>
+          ) : gameState === "idle" && showReconnectAction ? (
+            <div className="space-y-3">
+              <button
+                onClick={onReconnect}
+                className="w-full py-4 bg-gradient-gold rounded-2xl text-[#00184a] font-bold text-lg hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-[#e9c176]/10 btn-glow-hover"
+              >
+                Reconnect to Active Match
+              </button>
+              <button
+                onClick={onClose}
+                className="w-full py-4 rounded-2xl border border-white/10 hover:bg-white/5 text-white font-bold transition-all"
+              >
+                Close
+              </button>
+            </div>
           ) : (
             <div className="space-y-6">
               <div className="flex items-center justify-center gap-3 py-4 text-[#e9c176]">

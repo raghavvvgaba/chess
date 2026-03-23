@@ -144,6 +144,7 @@ function DashboardPage() {
   const [matchmakingState, setMatchmakingState] = useState<"idle" | "waiting">("idle");
   const [matchmakingStatus, setMatchmakingStatus] = useState<string>("");
   const [matchmakingCancelRequested, setMatchmakingCancelRequested] = useState(false);
+  const [showReconnectCta, setShowReconnectCta] = useState(false);
 
   useEffect(() => {
     if (!socket) return;
@@ -156,12 +157,14 @@ function DashboardPage() {
           setMatchmakingState("waiting");
           setMatchmakingStatus("");
           setMatchmakingCancelRequested(false);
+          setShowReconnectCta(false);
           setIsMatchmakingModalOpen(true);
           break;
         case INIT_GAME:
           if (message.payload) {
             setIsMatchmakingModalOpen(false);
             setMatchmakingState("idle");
+            setShowReconnectCta(false);
             navigate("/game", { state: { initialGameData: message.payload } });
           }
           break;
@@ -169,17 +172,22 @@ function DashboardPage() {
           setMatchmakingState("idle");
           setMatchmakingStatus("Matchmaking cancelled.");
           setMatchmakingCancelRequested(false);
+          setShowReconnectCta(false);
           break;
         case ALREADY_WAITING:
           setMatchmakingState("waiting");
           setMatchmakingStatus("Matchmaking already active.");
+          setShowReconnectCta(false);
           break;
         case ALREADY_IN_GAME:
           setMatchmakingStatus("You are already in a game.");
+          setMatchmakingState("idle");
+          setShowReconnectCta(true);
           break;
         case ACTION_REJECTED:
           setMatchmakingStatus(message.payload?.reason || "Action rejected.");
           setMatchmakingCancelRequested(false);
+          setShowReconnectCta(false);
           break;
       }
     };
@@ -195,6 +203,7 @@ function DashboardPage() {
     }
     socket.send(JSON.stringify({ type: INIT_GAME }));
     setMatchmakingStatus("Requesting match...");
+    setShowReconnectCta(false);
   };
 
   useEffect(() => {
@@ -202,8 +211,19 @@ function DashboardPage() {
       return;
     }
 
-    if ((location.state as { openMatchmaking?: boolean }).openMatchmaking) {
+    const routeState = location.state as { openMatchmaking?: boolean; reconnectExpired?: boolean };
+
+    if (routeState.openMatchmaking) {
       setIsMatchmakingModalOpen(true);
+      navigate(location.pathname, { replace: true, state: {} });
+      return;
+    }
+
+    if (routeState.reconnectExpired) {
+      setIsMatchmakingModalOpen(true);
+      setMatchmakingState("idle");
+      setShowReconnectCta(false);
+      setMatchmakingStatus("Reconnect window expired. Start a new match.");
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [location.pathname, location.state, navigate]);
@@ -680,12 +700,21 @@ function DashboardPage() {
 
       <MatchmakingModal
         isOpen={isMatchmakingModalOpen}
-        onClose={() => setIsMatchmakingModalOpen(false)}
+        onClose={() => {
+          setIsMatchmakingModalOpen(false);
+          setShowReconnectCta(false);
+        }}
         onStart={handleStartMatchmaking}
         onCancel={handleCancelMatchmaking}
+        onReconnect={() => {
+          setIsMatchmakingModalOpen(false);
+          setShowReconnectCta(false);
+          navigate("/game");
+        }}
         gameState={matchmakingState}
         statusMessage={matchmakingStatus}
         cancelRequested={matchmakingCancelRequested}
+        showReconnectAction={showReconnectCta}
       />
 
       <SocialDrawer

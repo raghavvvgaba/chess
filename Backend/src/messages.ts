@@ -16,3 +16,5 @@ export const REMATCH_STATE = "rematch_state";
 export const REMATCH_DECLINED = "rematch_declined";
 export const PLAYER_CONNECTION_STATE = "player_connection_state";
 export const QUIT_GAME = "quit_game";
+export const RECONNECT_GAME = "reconnect_game";
+export const LEAVE_GAME_VIEW = "leave_game_view";

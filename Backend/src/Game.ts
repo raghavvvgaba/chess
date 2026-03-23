@@ -348,8 +348,41 @@ export class Game {
         return false;
     }
 
+    markPlayerAway(userId: string) {
+        if (this.isConcluded) {
+            return false;
+        }
+
+        const disconnectedColor: PlayerColor | null = this.whitePlayer.userId === userId
+            ? "white"
+            : this.blackPlayer.userId === userId
+                ? "black"
+                : null;
+
+        if (!disconnectedColor) {
+            return false;
+        }
+
+        if (disconnectedColor === "white" && this.disconnectedWhite) {
+            return true;
+        }
+        if (disconnectedColor === "black" && this.disconnectedBlack) {
+            return true;
+        }
+
+        this.markPlayerDisconnected(disconnectedColor);
+        const disconnectEpoch = this.bumpDisconnectEpoch(disconnectedColor);
+        this.sendConnectionStateToOpponent(disconnectedColor, "reconnecting");
+        this.startReconnectTimer(disconnectedColor, disconnectEpoch);
+        return true;
+    }
+
     getGameId() {
         return this.gameId;
+    }
+
+    isGameConcluded() {
+        return this.isConcluded;
     }
 
     handleRematchStartFailed() {
