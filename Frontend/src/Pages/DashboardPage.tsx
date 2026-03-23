@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { authClient } from "../lib/auth-client";
 import AppSidebar from "../components/dashboard/AppSidebar";
 import useSocket from "../hooks/useSocket";
 import MatchmakingModal from "../components/dashboard/MatchmakingModal";
+import SocialDrawer from "../components/dashboard/SocialDrawer";
 import {
   INIT_GAME,
   WAITING_FOR_OPPONENT,
@@ -26,6 +27,7 @@ import {
   Swords,
   Target,
   Trophy,
+  Users,
   XCircle,
 } from "lucide-react";
 
@@ -70,19 +72,70 @@ type ProfileResponse = {
   profile: Profile;
 };
 
+type FriendSearchState =
+  | "none"
+  | "self"
+  | "incoming_pending"
+  | "outgoing_pending"
+  | "friends"
+  | "blocked";
+
+type FriendSearchResult = {
+  userId: string;
+  name: string;
+  chessUserId: string;
+  friendshipState: FriendSearchState;
+};
+
+type FriendSearchResponse = {
+  result: FriendSearchResult | null;
+};
+
+type IncomingFriendRequest = {
+  id: string;
+  sender: {
+    userId: string;
+    name: string;
+    chessUserId: string;
+  };
+  createdAt: string;
+};
+
+type IncomingFriendRequestsResponse = {
+  requests: IncomingFriendRequest[];
+};
+
+type FriendListItem = {
+  friendshipId: string;
+  user: {
+    userId: string;
+    name: string;
+    chessUserId: string;
+  };
+  connectedAt: string;
+};
+
+type FriendsListResponse = {
+  friends: FriendListItem[];
+};
+
 type FetchState = "idle" | "loading" | "success" | "error";
 
 function DashboardPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const socket = useSocket();
   const { data: session } = authClient.useSession();
   const user = session?.user;
 
   const [matches, setMatches] = useState<MatchHistoryItem[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [incomingRequests, setIncomingRequests] = useState<IncomingFriendRequest[]>([]);
+  const [friends, setFriends] = useState<FriendListItem[]>([]);
   const [fetchState, setFetchState] = useState<FetchState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isNewMatchDropdownOpen, setIsNewMatchDropdownOpen] = useState(false);
+  const [isSocialDrawerOpen, setIsSocialDrawerOpen] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -144,6 +197,17 @@ function DashboardPage() {
     setMatchmakingStatus("Requesting match...");
   };
 
+  useEffect(() => {
+    if (!location.state || typeof location.state !== "object") {
+      return;
+    }
+
+    if ((location.state as { openMatchmaking?: boolean }).openMatchmaking) {
+      setIsMatchmakingModalOpen(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.pathname, location.state, navigate]);
+
   const handleCancelMatchmaking = () => {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
     setMatchmakingCancelRequested(true);
@@ -175,12 +239,20 @@ function DashboardPage() {
       }
 
       try {
-        const [profileResponse, historyResponse] = await Promise.all([
+        const [profileResponse, historyResponse, incomingRequestsResponse, friendsResponse] = await Promise.all([
           fetch(`${backendUrl}/api/me`, {
             method: "GET",
             credentials: "include",
           }),
           fetch(`${backendUrl}/api/matches/history`, {
+            method: "GET",
+            credentials: "include",
+          }),
+          fetch(`${backendUrl}/api/friends/requests/incoming`, {
+            method: "GET",
+            credentials: "include",
+          }),
+          fetch(`${backendUrl}/api/friends`, {
             method: "GET",
             credentials: "include",
           }),
@@ -196,9 +268,21 @@ function DashboardPage() {
           throw new Error(errorData.message || `Failed to fetch match history: ${historyResponse.status}`);
         }
 
-        const [profileData, historyData]: [ProfileResponse, MatchHistoryResponse] = await Promise.all([
+        if (!incomingRequestsResponse.ok) {
+          const errorData = await incomingRequestsResponse.json().catch(() => ({}));
+          throw new Error(errorData.message || `Failed to fetch incoming requests: ${incomingRequestsResponse.status}`);
+        }
+
+        if (!friendsResponse.ok) {
+          const errorData = await friendsResponse.json().catch(() => ({}));
+          throw new Error(errorData.message || `Failed to fetch friends: ${friendsResponse.status}`);
+        }
+
+        const [profileData, historyData, incomingData, friendsData]: [ProfileResponse, MatchHistoryResponse, IncomingFriendRequestsResponse, FriendsListResponse] = await Promise.all([
           profileResponse.json(),
           historyResponse.json(),
+          incomingRequestsResponse.json(),
+          friendsResponse.json(),
         ]);
 
         if (!isActive) {
@@ -206,6 +290,8 @@ function DashboardPage() {
         }
 
         setProfile(profileData.profile);
+        setIncomingRequests(incomingData.requests ?? []);
+        setFriends(friendsData.friends ?? []);
         setMatches(
           (historyData.matches ?? []).map((match) => ({
             id: match.id,
@@ -307,6 +393,96 @@ function DashboardPage() {
     }
   }
 
+  async function refreshIncomingRequests() {
+    const response = await fetch(`${backendUrl}/api/friends/requests/incoming`, {
+      method: "GET",
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to refresh incoming requests");
+    }
+
+    const data: IncomingFriendRequestsResponse = await response.json();
+    setIncomingRequests(data.requests ?? []);
+  }
+
+  async function refreshFriends() {
+    const response = await fetch(`${backendUrl}/api/friends`, {
+      method: "GET",
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to refresh friends");
+    }
+
+    const data: FriendsListResponse = await response.json();
+    setFriends(data.friends ?? []);
+  }
+
+  async function handleSearchFriend(chessId: string): Promise<FriendSearchResult | null> {
+    const response = await fetch(`${backendUrl}/api/friends/search?chessUserId=${encodeURIComponent(chessId)}`, {
+      method: "GET",
+      credentials: "include",
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.message || "Failed to search for player");
+    }
+
+    const resultData = data as FriendSearchResponse;
+    return resultData.result;
+  }
+
+  async function handleSendFriendRequest(chessId: string): Promise<string> {
+    const response = await fetch(`${backendUrl}/api/friends/request`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ chessUserId: chessId }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.message || "Failed to send friend request");
+    }
+
+    const outcome = data.outcome as string;
+    switch (outcome) {
+      case "already_pending":
+        return "Friend request already pending.";
+      case "already_friends":
+        return "You are already friends.";
+      case "auto_accepted":
+        await refreshIncomingRequests();
+        await refreshFriends();
+        return "Request matched and accepted automatically!";
+      default:
+        return "Friend request sent.";
+    }
+  }
+
+  async function handleIncomingRequestAction(requestId: string, action: "accept" | "reject") {
+    const response = await fetch(`${backendUrl}/api/friends/requests/${requestId}/${action}`, {
+      method: "POST",
+      credentials: "include",
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.message || `Failed to ${action} request`);
+    }
+
+    setIncomingRequests((current) => current.filter((request) => request.id !== requestId));
+    if (action === "accept") {
+      await refreshFriends();
+    }
+  }
+
   return (
     <div className="min-h-screen dashboard-page flex flex-col md:flex-row text-[#e5e2e3]">
       <AppSidebar
@@ -314,10 +490,13 @@ function DashboardPage() {
         onCopyChessId={() => {
           void handleCopyChessId();
         }}
+        onStartOnlineMatch={() => {
+          setIsMatchmakingModalOpen(true);
+        }}
         copyState={copyState}
       />
 
-      <main className="flex-1 relative z-10 p-4 md:p-8 lg:p-12 overflow-y-auto max-h-screen custom-scrollbar">
+      <main className="flex-1 relative z-10 px-4 pt-20 pb-4 md:p-8 lg:p-12 overflow-y-auto max-h-screen custom-scrollbar">
         <div className="dashboard-page__mesh" />
 
         <div className="max-w-7xl mx-auto space-y-10">
@@ -328,47 +507,62 @@ function DashboardPage() {
               </h1>
             </div>
 
-            <div className="relative" ref={dropdownRef}>
-              <button
-                onClick={() => setIsNewMatchDropdownOpen(!isNewMatchDropdownOpen)}
-                className="group relative px-5 py-2 bg-gradient-gold rounded-xl overflow-hidden shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98] btn-glow-hover flex items-center gap-1.5 text-[#00184a] font-bold text-sm"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>New Match</span>
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isNewMatchDropdownOpen ? "rotate-180" : ""}`} />
-              </button>
+            <div className="flex items-center gap-3">
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setIsNewMatchDropdownOpen(!isNewMatchDropdownOpen)}
+                  className="group relative px-5 py-2 bg-gradient-gold rounded-xl overflow-hidden shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98] btn-glow-hover flex items-center gap-1.5 text-[#00184a] font-bold text-sm h-[52px]"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>New Match</span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isNewMatchDropdownOpen ? "rotate-180" : ""}`} />
+                </button>
 
-              {isNewMatchDropdownOpen && (
-                <div className="absolute right-0 mt-3 w-64 glass-obsidian border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-200">
-                  <button
-                    onClick={() => { setIsMatchmakingModalOpen(true); setIsNewMatchDropdownOpen(false); }}
-                    className="w-full flex items-center gap-4 p-4 hover:bg-white/5 transition-colors group"
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center group-hover:bg-blue-500/20 transition-colors">
-                      <Swords className="w-5 h-5 text-blue-400" />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-bold text-sm">Quick Matchmaking</p>
-                      <p className="text-[10px] text-[#8e9192]">Public queue for live players</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 ml-auto text-[#444748] group-hover:text-[#e9c176] transition-colors" />
-                  </button>
-                  <div className="h-[1px] bg-white/5 mx-4" />
-                  <button
-                    onClick={() => { navigate("/bot"); setIsNewMatchDropdownOpen(false); }}
-                    className="w-full flex items-center gap-4 p-4 hover:bg-white/5 transition-colors group"
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center group-hover:bg-emerald-500/20 transition-colors">
-                      <Cpu className="w-5 h-5 text-emerald-400" />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-bold text-sm">Vs Computer</p>
-                      <p className="text-[10px] text-[#8e9192]">Practice with Stockfish</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 ml-auto text-[#444748] group-hover:text-[#e9c176] transition-colors" />
-                  </button>
-                </div>
-              )}
+                {isNewMatchDropdownOpen && (
+                  <div className="absolute left-0 mt-3 w-64 glass-obsidian border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-200">
+                    <button
+                      onClick={() => { setIsMatchmakingModalOpen(true); setIsNewMatchDropdownOpen(false); }}
+                      className="w-full flex items-center gap-4 p-4 hover:bg-white/5 transition-colors group"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center group-hover:bg-blue-500/20 transition-colors">
+                        <Swords className="w-5 h-5 text-blue-400" />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-sm">Quick Matchmaking</p>
+                        <p className="text-[10px] text-[#8e9192]">Public queue for live players</p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 ml-auto text-[#444748] group-hover:text-[#e9c176] transition-colors" />
+                    </button>
+                    <div className="h-[1px] bg-white/5 mx-4" />
+                    <button
+                      onClick={() => { navigate("/bot"); setIsNewMatchDropdownOpen(false); }}
+                      className="w-full flex items-center gap-4 p-4 hover:bg-white/5 transition-colors group"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center group-hover:bg-emerald-500/20 transition-colors">
+                        <Cpu className="w-5 h-5 text-emerald-400" />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-sm">Vs Computer</p>
+                        <p className="text-[10px] text-[#8e9192]">Practice with Stockfish</p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 ml-auto text-[#444748] group-hover:text-[#e9c176] transition-colors" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsSocialDrawerOpen(true)}
+                className="relative group inline-flex h-[52px] w-[52px] items-center justify-center rounded-2xl border border-white/8 bg-white/[0.04] text-[#8e9192] transition-all hover:bg-white/[0.08] hover:text-white"
+              >
+                <Users className="h-5 w-5" />
+                {incomingRequests.length > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-lg bg-rose-500 text-[10px] font-bold text-white shadow-lg ring-2 ring-[#0e0e0f]">
+                    {incomingRequests.length}
+                  </span>
+                )}
+              </button>
             </div>
           </header>
 
@@ -492,6 +686,18 @@ function DashboardPage() {
         gameState={matchmakingState}
         statusMessage={matchmakingStatus}
         cancelRequested={matchmakingCancelRequested}
+      />
+
+      <SocialDrawer
+        isOpen={isSocialDrawerOpen}
+        onClose={() => setIsSocialDrawerOpen(false)}
+        friends={friends}
+        incomingRequests={incomingRequests}
+        onAcceptRequest={(id) => handleIncomingRequestAction(id, "accept")}
+        onRejectRequest={(id) => handleIncomingRequestAction(id, "reject")}
+        onSearch={handleSearchFriend}
+        onSendRequest={handleSendFriendRequest}
+        formatDate={formatDate}
       />
     </div>
   );

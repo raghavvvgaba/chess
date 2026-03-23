@@ -6,6 +6,14 @@ import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import { WebSocketServer } from "ws";
 import { auth } from "./auth.js";
 import { verifyDatabaseConnection } from "./db.js";
+import {
+    acceptIncomingFriendRequest,
+    getAcceptedFriends,
+    getIncomingFriendRequests,
+    rejectIncomingFriendRequest,
+    searchFriendByChessUserId,
+    sendFriendRequestByChessUserId
+} from "./friendshipStore.js";
 import { GameManager } from "./GameManager.js";
 import { getMatchHistoryByUserId } from "./gameStore.js";
 import { closeRedisConnection, verifyRedisConnection } from "./redis.js";
@@ -29,6 +37,7 @@ async function bootstrap() {
     await gameManager.hydrateActiveGames();
 
     const app = express();
+    app.use(express.json());
     app.use(cors({
         origin: frontendOrigin,
         credentials: true
@@ -82,6 +91,160 @@ async function bootstrap() {
         } catch (error) {
             console.error("Failed to fetch profile:", error);
             res.status(500).json({ message: "Failed to fetch profile" });
+        }
+    });
+
+    app.get("/api/friends/search", async (req, res) => {
+        try {
+            const session = await auth.api.getSession({
+                headers: fromNodeHeaders(req.headers)
+            });
+
+            if (!session?.user?.id) {
+                res.status(401).json({ message: "Unauthorized" });
+                return;
+            }
+
+            const chessUserId = typeof req.query.chessUserId === "string" ? req.query.chessUserId.trim().toUpperCase() : "";
+            if (!/^[A-Z0-9]{8}$/.test(chessUserId)) {
+                res.status(400).json({ message: "Chess ID must be 8 uppercase letters or numbers." });
+                return;
+            }
+
+            const result = await searchFriendByChessUserId(session.user.id, chessUserId);
+            res.json({ result });
+        } catch (error) {
+            console.error("Failed to search friend by Chess ID:", error);
+            res.status(500).json({ message: "Failed to search for player" });
+        }
+    });
+
+    app.post("/api/friends/request", async (req, res) => {
+        try {
+            const session = await auth.api.getSession({
+                headers: fromNodeHeaders(req.headers)
+            });
+
+            if (!session?.user?.id) {
+                res.status(401).json({ message: "Unauthorized" });
+                return;
+            }
+
+            const chessUserId = typeof req.body?.chessUserId === "string" ? req.body.chessUserId.trim().toUpperCase() : "";
+            if (!/^[A-Z0-9]{8}$/.test(chessUserId)) {
+                res.status(400).json({ message: "Chess ID must be 8 uppercase letters or numbers." });
+                return;
+            }
+
+            const outcome = await sendFriendRequestByChessUserId(session.user.id, chessUserId);
+
+            if (outcome === "not_found") {
+                res.status(404).json({ message: "Player not found", outcome });
+                return;
+            }
+
+            if (outcome === "self") {
+                res.status(409).json({ message: "You cannot add yourself", outcome });
+                return;
+            }
+
+            if (outcome === "blocked") {
+                res.status(409).json({ message: "This player cannot be added right now", outcome });
+                return;
+            }
+
+            res.json({ outcome });
+        } catch (error) {
+            console.error("Failed to send friend request:", error);
+            res.status(500).json({ message: "Failed to send friend request" });
+        }
+    });
+
+    app.get("/api/friends/requests/incoming", async (req, res) => {
+        try {
+            const session = await auth.api.getSession({
+                headers: fromNodeHeaders(req.headers)
+            });
+
+            if (!session?.user?.id) {
+                res.status(401).json({ message: "Unauthorized" });
+                return;
+            }
+
+            const requests = await getIncomingFriendRequests(session.user.id);
+            res.json({ requests });
+        } catch (error) {
+            console.error("Failed to fetch incoming friend requests:", error);
+            res.status(500).json({ message: "Failed to fetch incoming requests" });
+        }
+    });
+
+    app.get("/api/friends", async (req, res) => {
+        try {
+            const session = await auth.api.getSession({
+                headers: fromNodeHeaders(req.headers)
+            });
+
+            if (!session?.user?.id) {
+                res.status(401).json({ message: "Unauthorized" });
+                return;
+            }
+
+            const friends = await getAcceptedFriends(session.user.id);
+            res.json({ friends });
+        } catch (error) {
+            console.error("Failed to fetch friends:", error);
+            res.status(500).json({ message: "Failed to fetch friends" });
+        }
+    });
+
+    app.post("/api/friends/requests/:id/accept", async (req, res) => {
+        try {
+            const session = await auth.api.getSession({
+                headers: fromNodeHeaders(req.headers)
+            });
+
+            if (!session?.user?.id) {
+                res.status(401).json({ message: "Unauthorized" });
+                return;
+            }
+
+            const request = await acceptIncomingFriendRequest(req.params.id, session.user.id);
+
+            if (!request) {
+                res.status(404).json({ message: "Friend request not found" });
+                return;
+            }
+
+            res.json({ outcome: "accepted" });
+        } catch (error) {
+            console.error("Failed to accept friend request:", error);
+            res.status(500).json({ message: "Failed to accept friend request" });
+        }
+    });
+
+    app.post("/api/friends/requests/:id/reject", async (req, res) => {
+        try {
+            const session = await auth.api.getSession({
+                headers: fromNodeHeaders(req.headers)
+            });
+
+            if (!session?.user?.id) {
+                res.status(401).json({ message: "Unauthorized" });
+                return;
+            }
+
+            const request = await rejectIncomingFriendRequest(req.params.id, session.user.id);
+
+            if (!request) {
+                res.status(404).json({ message: "Friend request not found" });
+                return;
+            }
+
+            res.json({ outcome: "declined" });
+        } catch (error) {
+            console.error("Failed to reject friend request:", error);
+            res.status(500).json({ message: "Failed to reject friend request" });
         }
     });
 

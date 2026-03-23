@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router";
 import { authClient } from "../lib/auth-client";
+import LoadingState from "../components/LoadingState";
 
 type AuthMode = "sign-in" | "sign-up";
 
@@ -79,13 +80,7 @@ function AuthPage() {
     }
 
     if (isPending) {
-        return (
-            <main className="auth-page min-h-dvh text-white flex items-center justify-center px-4">
-                <p className="rounded-xl border border-[#f6f2e8]/20 bg-[#1b1814]/80 px-5 py-3 text-sm text-[#f6ecdd]">
-                    Checking session...
-                </p>
-            </main>
-        );
+        return <LoadingState message="Checking Session" subtitle="Verifying authentication..." />;
     }
 
     return (

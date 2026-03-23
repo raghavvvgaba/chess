@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Chess, type Square } from "chess.js";
 import { useNavigate, useSearchParams, useLocation } from "react-router";
+import { motion, AnimatePresence } from "framer-motion";
 import ChessBoard from "../components/ChessBoard";
 import MatchConclusionModal from "../components/game/MatchConclusionModal";
 import PromotionModal from "../components/game/PromotionModal";
 import useSocket from "../hooks/useSocket";
+import LoadingState from "../components/LoadingState";
 
 export const INIT_GAME = "init_game";
 export const MOVE = "move";
@@ -695,29 +697,83 @@ function Game() {
         const rows = getMoveHistoryRows();
         if (rows.length === 0) {
             return (
-                <div className="text-sm text-gray-400 py-8 text-center">
-                    No moves yet
+                <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-20 py-12">
+                    <div className="relative">
+                        <svg viewBox="0 0 24 24" className="w-12 h-12 fill-none stroke-[#e9c176] stroke-1" aria-hidden="true">
+                            <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div className="absolute inset-0 blur-xl bg-[#e9c176]/10" />
+                    </div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">No moves recorded</p>
                 </div>
             );
         }
         return (
-            <div ref={scrollRef} className={`${maxHeightClass} overflow-y-auto pr-1`}>
+            <div ref={scrollRef} className={`${maxHeightClass} overflow-y-auto custom-scrollbar pr-1`}>
                 <div className="space-y-1">
+                    {/* Header Labels */}
+                    <div className="grid grid-cols-[36px_1fr_1fr] text-[9px] font-black uppercase tracking-[0.15em] text-[#444748] mb-2 px-1">
+                        <div className="text-center">#</div>
+                        <div className="text-center">White</div>
+                        <div className="text-center">Black</div>
+                    </div>
+
                     {rows.map((row) => (
                         <div
                             key={row.moveNumber}
-                            className="grid grid-cols-[36px_minmax(0,1fr)_minmax(0,1fr)] gap-2 items-center rounded-lg px-2 py-1.5 hover:bg-[#3a3936] transition-colors"
+                            className="grid grid-cols-[44px_1fr_1fr] items-stretch group border-b border-white/[0.02] last:border-0"
                         >
-                            <div className="text-xs text-gray-400 font-semibold">{row.moveNumber}.</div>
-                            <div
-                                className={`text-sm px-2 py-1 rounded-md text-center ${row.white?.ply === latestPly ? "bg-[#b58863] text-white font-semibold" : "bg-[#3a3936] text-gray-100"}`}
-                            >
-                                {row.white?.san ?? "—"}
+                            {/* Move Number Column - Ticker Style */}
+                            <div className="flex items-center justify-center py-2.5 border-r border-white/[0.05] bg-black/20">
+                                <span className="font-mono text-[9px] font-black text-[#3f3f46] group-hover:text-[#e9c176]/40 transition-colors">
+                                    {row.moveNumber.toString().padStart(2, '0')}
+                                </span>
                             </div>
-                            <div
-                                className={`text-sm px-2 py-1 rounded-md text-center ${row.black?.ply === latestPly ? "bg-[#b58863] text-white font-semibold" : "bg-[#3a3936] text-gray-100"}`}
-                            >
-                                {row.black?.san ?? "—"}
+
+                            {/* White Move */}
+                            <div className="relative px-1 py-1 flex items-center justify-center">
+                                {row.white && (
+                                    <div className="relative w-full h-full flex items-center justify-center">
+                                        {row.white.ply === latestPly && (
+                                            <motion.div 
+                                                layoutId="online-active-pill"
+                                                className="absolute inset-0 z-0 bg-[#e9c176]/10 border border-[#e9c176]/20 rounded-lg shadow-[0_0_15px_rgba(233,193,118,0.05)]"
+                                                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                            />
+                                        )}
+                                        <span className={`relative z-10 text-[13px] font-bold tracking-tight transition-colors duration-300 ${
+                                            row.white.ply === latestPly 
+                                                ? "text-[#e9c176]" 
+                                                : "text-[#fff6e9]/80 group-hover:text-[#fff6e9]"
+                                        }`}>
+                                            {row.white.san}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Black Move */}
+                            <div className="relative px-1 py-1 flex items-center justify-center border-l border-white/[0.05]">
+                                {row.black ? (
+                                    <div className="relative w-full h-full flex items-center justify-center">
+                                        {row.black.ply === latestPly && (
+                                            <motion.div 
+                                                layoutId="online-active-pill"
+                                                className="absolute inset-0 z-0 bg-[#e9c176]/10 border border-[#e9c176]/20 rounded-lg shadow-[0_0_15px_rgba(233,193,118,0.05)]"
+                                                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                            />
+                                        )}
+                                        <span className={`relative z-10 text-[13px] font-bold tracking-tight transition-colors duration-300 ${
+                                            row.black.ply === latestPly 
+                                                ? "text-[#e9c176]" 
+                                                : "text-[#94a3b8]/80 group-hover:text-[#cbd5e1]"
+                                        }`}>
+                                            {row.black.san}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <div className="w-4 h-0.5 bg-white/5 rounded-full" />
+                                )}
                             </div>
                         </div>
                     ))}
@@ -833,15 +889,7 @@ function Game() {
     };
 
     if (gameState !== "in_game") {
-        return (
-            <main className="min-h-screen bg-[#262522] flex items-center justify-center p-4">
-                <section className="w-full max-w-xl bg-[#2f2e2b] border border-[#45433f] rounded-xl p-8 text-center text-white space-y-4 shadow-lg">
-                    <h1 className="text-3xl font-bold">Connecting...</h1>
-                    <p className="text-gray-300">Setting up the board.</p>
-                    {statusMessage && <p className="text-sm text-gray-400">{statusMessage}</p>}
-                </section>
-            </main>
-        );
+        return <LoadingState message="Connecting..." subtitle={statusMessage || "Setting up the board"} />;
     }
 
     const getOpponentSubtitle = () => {

@@ -492,10 +492,10 @@ function PlayVsBot() {
       <AppSidebar />
       <div className="bot-page__mesh" aria-hidden />
       
-      <main className="flex-1 relative z-10 p-4 md:p-8 lg:p-12 overflow-y-auto max-h-screen custom-scrollbar">
-        <div className="max-w-7xl mx-auto">
+      <main className="flex-1 relative z-10 px-4 pt-16 pb-4 md:px-8 md:py-6 lg:px-12 lg:py-8 overflow-hidden h-screen flex flex-col">
+        <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col min-h-0">
           {phase === "setup" ? (
-            <div className="max-w-4xl mx-auto space-y-12 h-[calc(100vh-10rem)] flex flex-col justify-center">
+            <div className="flex-1 flex flex-col justify-center py-8 overflow-y-auto custom-scrollbar">
               <AnimatePresence mode="wait">
                 {setupStep === "color" ? (
                   <motion.div 
@@ -504,31 +504,31 @@ function PlayVsBot() {
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 50 }}
                     transition={{ duration: 0.4, ease: "easeOut" }}
-                    className="space-y-12"
+                    className="space-y-8"
                   >
-                    <div className="text-center space-y-4">
-                      <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#e9c176]/10 border border-[#e9c176]/20 text-[#e9c176] text-xs font-bold uppercase tracking-widest">
+                    <div className="text-center space-y-2">
+                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#e9c176]/10 border border-[#e9c176]/20 text-[#e9c176] text-[10px] font-bold uppercase tracking-widest">
                         <span>Step 1 of 2</span>
                       </div>
-                      <h1 className="text-4xl md:text-6xl font-display font-extrabold tracking-tight">
+                      <h1 className="text-3xl md:text-5xl font-display font-extrabold tracking-tight">
                         Choose Your <span className="text-[#e9c176]">Side</span>
                       </h1>
                     </div>
 
-                    <div className="relative flex flex-col items-center gap-12 w-full max-w-5xl mx-auto">
+                    <div className="relative flex flex-col items-center gap-8 w-full max-w-5xl mx-auto">
                       <div className="relative w-full flex items-center justify-center">
                         {/* Navigation Arrows */}
-                        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 flex justify-between px-4 md:px-12 z-30 pointer-events-none">
+                        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 flex justify-between px-2 md:px-8 z-30 pointer-events-none">
                           <button
                             onClick={() => {
                               const currentIndex = COLOR_OPTIONS.findIndex(o => o.value === setupColor);
                               const nextIndex = (currentIndex - 1 + COLOR_OPTIONS.length) % COLOR_OPTIONS.length;
                               setSetupColor(COLOR_OPTIONS[nextIndex].value);
                             }}
-                            className="w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10 hover:border-[#e9c176]/50 transition-all pointer-events-auto group backdrop-blur-md"
+                            className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10 hover:border-[#e9c176]/50 transition-all pointer-events-auto group backdrop-blur-md"
                             aria-label="Previous side"
                           >
-                            <ChevronLeft className="w-6 h-6 group-hover:-translate-x-0.5 transition-transform" />
+                            <ChevronLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
                           </button>
                           <button
                             onClick={() => {
@@ -536,15 +536,15 @@ function PlayVsBot() {
                               const nextIndex = (currentIndex + 1) % COLOR_OPTIONS.length;
                               setSetupColor(COLOR_OPTIONS[nextIndex].value);
                             }}
-                            className="w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10 hover:border-[#e9c176]/50 transition-all pointer-events-auto group backdrop-blur-md"
+                            className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10 hover:border-[#e9c176]/50 transition-all pointer-events-auto group backdrop-blur-md"
                             aria-label="Next side"
                           >
-                            <ChevronRight className="w-6 h-6 group-hover:translate-x-0.5 transition-transform" />
+                            <ChevronRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
                           </button>
                         </div>
 
                         {/* Carousel Viewport */}
-                        <div className="w-full overflow-hidden py-12 px-4 mask-fade-edges-horizontal">
+                        <div className="w-full overflow-hidden py-8 px-4 mask-fade-edges-horizontal">
                           <motion.div 
                             className="flex items-center"
                             animate={{ 
@@ -558,44 +558,43 @@ function PlayVsBot() {
                                 <motion.div
                                   key={option.value}
                                   animate={{ 
-                                    scale: active ? 1.1 : 0.85,
-                                    opacity: active ? 1 : 0.4,
-                                    z: active ? 50 : 0
+                                    scale: active ? 1.05 : 0.8,
+                                    opacity: active ? 1 : 0.3,
                                   }}
                                   transition={{ type: "spring", stiffness: 260, damping: 26 }}
                                   style={{ width: cardWidth }}
-                                  className={`flex-shrink-0 aspect-[3/4] rounded-[2.5rem] border transition-all duration-500 relative overflow-hidden group mx-4 ${
+                                  className={`flex-shrink-0 aspect-[3/4] rounded-[2rem] border transition-all duration-500 relative overflow-hidden group mx-4 ${
                                     active 
-                                      ? "bg-gradient-to-b from-[#e9c176]/20 to-[#e9c176]/5 border-[#e9c176] shadow-[0_0_60px_rgba(233,193,118,0.2)]" 
+                                      ? "bg-gradient-to-b from-[#e9c176]/20 to-[#e9c176]/5 border-[#e9c176] shadow-[0_0_40px_rgba(233,193,118,0.15)]" 
                                       : "bg-white/5 border-white/5"
                                   }`}
                                 >
                                   <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80 z-10" />
-                                  <div className="absolute inset-0 flex items-center justify-center p-8 transition-transform duration-700 group-hover:scale-110">
+                                  <div className="absolute inset-0 flex items-center justify-center p-6 transition-transform duration-700 group-hover:scale-105">
                                     {option.value === "random" ? (
                                       <div className="relative">
-                                        <img src="/Pieces/wk.png" alt="" className="w-32 h-32 absolute -translate-x-12 -rotate-12 blur-[1px] opacity-40" />
-                                        <img src="/Pieces/k.png" alt="" className="w-32 h-32 absolute translate-x-12 rotate-12 blur-[1px] opacity-40" />
-                                        <Dices className="w-24 h-24 text-[#e9c176] relative z-20 drop-shadow-[0_0_15px_rgba(233,193,118,0.5)]" />
+                                        <img src="/Pieces/wk.png" alt="" className="w-24 h-24 absolute -translate-x-8 -rotate-12 blur-[1px] opacity-40" />
+                                        <img src="/Pieces/k.png" alt="" className="w-24 h-24 absolute translate-x-8 rotate-12 blur-[1px] opacity-40" />
+                                        <Dices className="w-16 h-16 text-[#e9c176] relative z-20 drop-shadow-[0_0_15px_rgba(233,193,118,0.5)]" />
                                       </div>
                                     ) : (
                                       <img 
                                         src={option.image} 
                                         alt={option.label}
-                                        className={`w-44 h-44 object-contain drop-shadow-[0_10px_40px_rgba(0,0,0,0.6)] ${active ? "animate-float" : ""}`}
+                                        className={`w-32 h-32 object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.6)] ${active ? "animate-float" : ""}`}
                                       />
                                     )}
                                   </div>
-                                  <div className="absolute bottom-10 left-0 right-0 z-20 text-center space-y-3 px-6">
-                                    <h3 className={`text-3xl font-display font-bold ${active ? "text-[#e9c176]" : "text-white"}`}>{option.label}</h3>
-                                    <p className={`text-sm text-[#c4c7c7] transition-all duration-500 ${active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+                                  <div className="absolute bottom-8 left-0 right-0 z-20 text-center space-y-2 px-4">
+                                    <h3 className={`text-2xl font-display font-bold ${active ? "text-[#e9c176]" : "text-white"}`}>{option.label}</h3>
+                                    <p className={`text-xs text-[#c4c7c7] transition-all duration-500 ${active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
                                       {option.description}
                                     </p>
                                   </div>
                                   {active && (
                                     <motion.div 
                                       layoutId="active-glow"
-                                      className="absolute inset-0 border-2 border-[#e9c176] rounded-[2.5rem] pointer-events-none"
+                                      className="absolute inset-0 border-2 border-[#e9c176] rounded-[2rem] pointer-events-none"
                                     />
                                   )}
                                 </motion.div>
@@ -607,10 +606,10 @@ function PlayVsBot() {
 
                       <button
                         onClick={() => setSetupStep("difficulty")}
-                        className="group flex items-center gap-3 px-12 py-5 bg-[#e9c176] text-[#00184a] rounded-2xl font-bold text-lg hover:scale-105 transition-all shadow-xl shadow-[#e9c176]/20 active:scale-95"
+                        className="group flex items-center gap-3 px-10 py-4 bg-[#e9c176] text-[#00184a] rounded-xl font-bold text-base hover:scale-105 transition-all shadow-lg shadow-[#e9c176]/20 active:scale-95"
                       >
                         <span>Confirm Side</span>
-                        <ChevronRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                        <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                       </button>
                     </div>
                   </motion.div>
@@ -621,31 +620,31 @@ function PlayVsBot() {
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -50 }}
                     transition={{ duration: 0.4, ease: "easeOut" }}
-                    className="space-y-12"
+                    className="space-y-8"
                   >
-                    <div className="text-center space-y-4">
-                      <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#e9c176]/10 border border-[#e9c176]/20 text-[#e9c176] text-xs font-bold uppercase tracking-widest">
+                    <div className="text-center space-y-2">
+                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#e9c176]/10 border border-[#e9c176]/20 text-[#e9c176] text-[10px] font-bold uppercase tracking-widest">
                         <span>Step 2 of 2</span>
                       </div>
-                      <h1 className="text-4xl md:text-6xl font-display font-extrabold tracking-tight">
+                      <h1 className="text-3xl md:text-5xl font-display font-extrabold tracking-tight">
                         Choose Your <span className="text-[#e9c176]">Challenge</span>
                       </h1>
                     </div>
 
-                    <div className="relative flex flex-col items-center gap-12 w-full max-w-5xl mx-auto">
+                    <div className="relative flex flex-col items-center gap-8 w-full max-w-5xl mx-auto">
                       <div className="relative w-full flex items-center justify-center">
                         {/* Navigation Arrows */}
-                        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 flex justify-between px-4 md:px-12 z-30 pointer-events-none">
+                        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 flex justify-between px-2 md:px-8 z-30 pointer-events-none">
                           <button
                             onClick={() => {
                               const currentIndex = DIFFICULTY_OPTIONS.indexOf(difficulty);
                               const nextIndex = (currentIndex - 1 + DIFFICULTY_OPTIONS.length) % DIFFICULTY_OPTIONS.length;
                               setDifficulty(DIFFICULTY_OPTIONS[nextIndex]);
                             }}
-                            className="w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10 hover:border-[#e9c176]/50 transition-all pointer-events-auto group backdrop-blur-md"
+                            className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10 hover:border-[#e9c176]/50 transition-all pointer-events-auto group backdrop-blur-md"
                             aria-label="Previous difficulty"
                           >
-                            <ChevronLeft className="w-6 h-6 group-hover:-translate-x-0.5 transition-transform" />
+                            <ChevronLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
                           </button>
                           <button
                             onClick={() => {
@@ -653,15 +652,15 @@ function PlayVsBot() {
                               const nextIndex = (currentIndex + 1) % DIFFICULTY_OPTIONS.length;
                               setDifficulty(DIFFICULTY_OPTIONS[nextIndex]);
                             }}
-                            className="w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10 hover:border-[#e9c176]/50 transition-all pointer-events-auto group backdrop-blur-md"
+                            className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10 hover:border-[#e9c176]/50 transition-all pointer-events-auto group backdrop-blur-md"
                             aria-label="Next difficulty"
                           >
-                            <ChevronRight className="w-6 h-6 group-hover:translate-x-0.5 transition-transform" />
+                            <ChevronRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
                           </button>
                         </div>
 
                         {/* Carousel Viewport */}
-                        <div className="w-full overflow-hidden py-12 px-4 mask-fade-edges-horizontal">
+                        <div className="w-full overflow-hidden py-8 px-4 mask-fade-edges-horizontal">
                           <motion.div 
                             className="flex items-center"
                             animate={{ 
@@ -676,36 +675,35 @@ function PlayVsBot() {
                                 <motion.div
                                   key={option}
                                   animate={{ 
-                                    scale: active ? 1.1 : 0.85,
-                                    opacity: active ? 1 : 0.4,
-                                    z: active ? 50 : 0
+                                    scale: active ? 1.05 : 0.8,
+                                    opacity: active ? 1 : 0.3,
                                   }}
                                   transition={{ type: "spring", stiffness: 260, damping: 26 }}
                                   style={{ width: cardWidth }}
-                                  className={`flex-shrink-0 aspect-[3/4] rounded-[2.5rem] border transition-all duration-500 relative overflow-hidden group mx-4 ${
+                                  className={`flex-shrink-0 aspect-[3/4] rounded-[2rem] border transition-all duration-500 relative overflow-hidden group mx-4 ${
                                     active 
-                                      ? "bg-gradient-to-b from-[#e9c176]/20 to-[#e9c176]/5 border-[#e9c176] shadow-[0_0_60px_rgba(233,193,118,0.2)]" 
+                                      ? "bg-gradient-to-b from-[#e9c176]/20 to-[#e9c176]/5 border-[#e9c176] shadow-[0_0_40px_rgba(233,193,118,0.15)]" 
                                       : "bg-white/5 border-white/5"
                                   }`}
                                 >
                                   <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80 z-10" />
-                                  <div className="absolute inset-0 flex items-center justify-center p-8">
-                                    <div className={`relative transition-transform duration-700 group-hover:scale-110 ${active ? "animate-pulse" : ""}`}>
-                                      {option === "easy" && <Target className="w-24 h-24 text-blue-400 drop-shadow-[0_0_15px_rgba(96,165,250,0.4)]" />}
-                                      {option === "medium" && <Zap className="w-24 h-24 text-[#e9c176] drop-shadow-[0_0_15px_rgba(233,193,118,0.4)]" />}
-                                      {option === "hard" && <Swords className="w-24 h-24 text-rose-400 drop-shadow-[0_0_15px_rgba(251,113,133,0.4)]" />}
+                                  <div className="absolute inset-0 flex items-center justify-center p-6">
+                                    <div className={`relative transition-transform duration-700 group-hover:scale-105 ${active ? "animate-pulse" : ""}`}>
+                                      {option === "easy" && <Target className="w-16 h-16 text-blue-400 drop-shadow-[0_0_15px_rgba(96,165,250,0.4)]" />}
+                                      {option === "medium" && <Zap className="w-16 h-16 text-[#e9c176] drop-shadow-[0_0_15px_rgba(233,193,118,0.4)]" />}
+                                      {option === "hard" && <Swords className="w-16 h-16 text-rose-400 drop-shadow-[0_0_15px_rgba(251,113,133,0.4)]" />}
                                     </div>
                                   </div>
-                                  <div className="absolute bottom-10 left-0 right-0 z-20 text-center space-y-3 px-6">
-                                    <h3 className={`text-3xl font-display font-bold ${active ? "text-[#e9c176]" : "text-white"}`}>{preset.label}</h3>
-                                    <p className={`text-sm text-[#c4c7c7] transition-all duration-500 ${active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+                                  <div className="absolute bottom-8 left-0 right-0 z-20 text-center space-y-2 px-4">
+                                    <h3 className={`text-2xl font-display font-bold ${active ? "text-[#e9c176]" : "text-white"}`}>{preset.label}</h3>
+                                    <p className={`text-xs text-[#c4c7c7] transition-all duration-500 ${active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
                                       {preset.summary}
                                     </p>
                                   </div>
                                   {active && (
                                     <motion.div 
                                       layoutId="active-glow-diff"
-                                      className="absolute inset-0 border-2 border-[#e9c176] rounded-[2.5rem] pointer-events-none"
+                                      className="absolute inset-0 border-2 border-[#e9c176] rounded-[2rem] pointer-events-none"
                                     />
                                   )}
                                 </motion.div>
@@ -718,23 +716,23 @@ function PlayVsBot() {
                       <div className="flex gap-4">
                         <button
                           onClick={() => setSetupStep("color")}
-                          className="group flex items-center gap-3 px-8 py-5 bg-white/5 border border-white/10 text-white rounded-2xl font-bold text-lg hover:bg-white/10 transition-all active:scale-95"
+                          className="group flex items-center gap-2 px-6 py-4 bg-white/5 border border-white/10 text-white rounded-xl font-bold text-sm hover:bg-white/10 transition-all active:scale-95"
                         >
-                          <ChevronLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
+                          <ChevronLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
                           <span>Back</span>
                         </button>
                         <button
                           onClick={() => void handleStartGame()}
                           disabled={engineBooting}
-                          className="group flex items-center gap-3 px-12 py-5 bg-gradient-gold text-[#00184a] rounded-2xl font-bold text-lg hover:scale-105 transition-all shadow-xl shadow-[#e9c176]/20 disabled:opacity-50 disabled:cursor-wait active:scale-95"
+                          className="group flex items-center gap-3 px-10 py-4 bg-gradient-gold text-[#00184a] rounded-xl font-bold text-base hover:scale-105 transition-all shadow-lg shadow-[#e9c176]/20 disabled:opacity-50 disabled:cursor-wait active:scale-95"
                         >
                           {engineBooting ? (
-                             <Clock className="w-5 h-5 animate-pulse" />
+                             <Clock className="w-4 h-4 animate-pulse" />
                           ) : (
-                             <Play className="w-5 h-5 fill-current" />
+                             <Play className="w-4 h-4 fill-current" />
                           )}
-                          <span>{engineBooting ? "Initializing..." : "Start Match"}</span>
-                          {!engineBooting && <ChevronRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />}
+                          <span>{engineBooting ? "Starting..." : "Start Match"}</span>
+                          {!engineBooting && <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />}
                         </button>
                       </div>
                     </div>
@@ -743,143 +741,193 @@ function PlayVsBot() {
               </AnimatePresence>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-in fade-in duration-500">
+            <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch py-2 animate-in fade-in duration-500">
               {/* Left Column: Board */}
-              <div className="lg:col-span-8 space-y-6">
+              <div className="lg:col-span-8 flex flex-col gap-4 min-h-0">
                 {/* Bot Profile Card */}
-                <div className="glass-obsidian border border-white/5 rounded-2xl p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                      <Cpu className="w-6 h-6 text-blue-400" />
+                <div className="glass-obsidian border border-white/5 rounded-xl p-2 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                      <Cpu className="w-4 h-4 text-blue-400" />
                     </div>
                     <div>
-                      <p className="font-bold text-lg flex items-center gap-2">
-                        Stockfish AI
-                        <span className="px-2 py-0.5 rounded bg-white/5 text-[10px] font-bold uppercase tracking-wider text-blue-400 border border-blue-400/20">
+                      <p className="font-bold text-sm flex items-center gap-2">
+                        Bot
+                        <span className="px-1.5 py-0.5 rounded bg-white/5 text-[8px] font-bold uppercase tracking-wider text-blue-400 border border-blue-400/20">
                           {difficultyPreset.label}
                         </span>
                       </p>
-                      <p className="text-xs text-[#8e9192]">Thinking time: {difficultyPreset.movetimeMs}ms</p>
                     </div>
                   </div>
-                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${botThinking ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-white/5 border-white/10 text-[#8e9192]'}`}>
-                    <div className={`w-2 h-2 rounded-full ${botThinking ? 'bg-blue-400 animate-pulse' : 'bg-slate-600'}`} />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">{botThinking ? 'Bot Thinking' : 'Bot Waiting'}</span>
+                  <div className={`flex items-center gap-2 px-2.5 py-0.5 rounded-full border ${botThinking ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-white/5 border-white/10 text-[#8e9192]'}`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${botThinking ? 'bg-blue-400 animate-pulse' : 'bg-slate-600'}`} />
+                    <span className="text-[8px] font-bold uppercase tracking-widest">{botThinking ? 'Thinking' : 'Waiting'}</span>
                   </div>
                 </div>
 
                 {/* Board Container */}
-                <div className="glass-obsidian border border-white/10 p-2 md:p-6 rounded-[2rem] shadow-2xl relative">
-                  <div className="absolute inset-0 bg-gradient-to-br from-[#e9c176]/5 to-transparent pointer-events-none rounded-[2rem]" />
-                  <ChessBoard
-                    board={board}
-                    isInteractive={phase === "playing" && !botThinking && !matchConclusion.isOpen && !pendingPromotion.isOpen}
-                    playerColor={humanColor}
-                    currentTurn={currentTurn}
-                    orientation={humanColor}
-                    setStatusMessage={setStatusMessage}
-                    fen={currentFen}
-                    lastMove={lastMove}
-                    checkedKingSquare={checkedKingSquare}
-                    onMoveRequest={handleMoveRequest}
-                    onPromotionRequired={handlePromotionRequired}
-                  />
+                <div className="flex-1 min-h-0 flex items-center justify-center">
+                  <div className="w-full max-h-full aspect-square max-w-[min(100%,calc(100vh-18rem))] glass-obsidian border border-white/10 p-1 md:p-2 rounded-2xl shadow-2xl relative">
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#e9c176]/5 to-transparent pointer-events-none rounded-2xl" />
+                    <ChessBoard
+                      board={board}
+                      isInteractive={phase === "playing" && !botThinking && !matchConclusion.isOpen && !pendingPromotion.isOpen}
+                      playerColor={humanColor}
+                      currentTurn={currentTurn}
+                      orientation={humanColor}
+                      setStatusMessage={setStatusMessage}
+                      fen={currentFen}
+                      lastMove={lastMove}
+                      checkedKingSquare={checkedKingSquare}
+                      onMoveRequest={handleMoveRequest}
+                      onPromotionRequired={handlePromotionRequired}
+                    />
+                  </div>
                 </div>
 
                 {/* Player Profile Card */}
-                <div className="glass-obsidian border border-white/5 rounded-2xl p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-gold flex items-center justify-center">
-                      <span className="text-[#00184a] font-black text-xl">{playerName.charAt(0)}</span>
+                <div className="glass-obsidian border border-white/5 rounded-xl p-2 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-gold flex items-center justify-center">
+                      <span className="text-[#00184a] font-black text-sm">{playerName.charAt(0)}</span>
                     </div>
                     <div>
-                      <p className="font-bold text-lg">{playerName}</p>
-                      <p className="text-xs text-[#8e9192]">Playing as {humanColor}</p>
+                      <p className="font-bold text-sm">{playerName}</p>
+                      <p className="text-[9px] text-[#8e9192]">Playing as {humanColor}</p>
                     </div>
                   </div>
-                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${isHumanTurn ? 'bg-[#e9c176]/10 border-[#e9c176]/20 text-[#e9c176]' : 'bg-white/5 border-white/10 text-[#8e9192]'}`}>
-                    <div className={`w-2 h-2 rounded-full ${isHumanTurn ? 'bg-[#e9c176] animate-pulse' : 'bg-slate-600'}`} />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">{isHumanTurn ? 'Your Turn' : 'Waiting'}</span>
+                  <div className={`flex items-center gap-2 px-2.5 py-0.5 rounded-full border ${isHumanTurn ? 'bg-[#e9c176]/10 border-[#e9c176]/20 text-[#e9c176]' : 'bg-white/5 border-white/10 text-[#8e9192]'}`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${isHumanTurn ? 'bg-[#e9c176] animate-pulse' : 'bg-slate-600'}`} />
+                    <span className="text-[8px] font-bold uppercase tracking-widest">{isHumanTurn ? 'Your Turn' : 'Waiting'}</span>
                   </div>
                 </div>
               </div>
 
               {/* Right Column: Controls & History */}
-              <div className="lg:col-span-4 space-y-6 flex flex-col h-full">
+              <div className="lg:col-span-4 flex flex-col gap-4 min-h-0">
                 {/* Action Controls */}
-                <div className="glass-obsidian border border-white/5 rounded-3xl p-6 space-y-4">
-                  <h3 className="text-sm font-bold uppercase tracking-widest text-[#444748] flex items-center gap-2">
-                    <Settings2 className="w-4 h-4" />
+                <div className="glass-obsidian border border-white/5 rounded-2xl p-4 space-y-3 shrink-0">
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#444748] flex items-center gap-2">
+                    <Settings2 className="w-3.5 h-3.5" />
                     Controls
                   </h3>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={() => void returnToSetup()}
-                      className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 transition-all group"
+                      className="flex flex-col items-center gap-1 p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 transition-all group"
                     >
-                      <RotateCcw className="w-5 h-5 text-[#e9c176] group-hover:rotate-[-30deg] transition-transform" />
-                      <span className="text-xs font-bold uppercase tracking-tighter">New Match</span>
+                      <RotateCcw className="w-3.5 h-3.5 text-[#e9c176] group-hover:rotate-[-30deg] transition-transform" />
+                      <span className="text-[9px] font-bold uppercase tracking-tighter">New Match</span>
                     </button>
                     <button
                       onClick={() => void handleResign()}
                       disabled={phase !== "playing"}
-                      className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/10 transition-all group disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="flex flex-col items-center gap-1 p-2 rounded-xl bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/10 transition-all group disabled:opacity-30 disabled:cursor-not-allowed"
                     >
-                      <Flag className="w-5 h-5 text-rose-400 group-hover:translate-y-[-2px] transition-transform" />
-                      <span className="text-xs font-bold uppercase tracking-tighter">Resign</span>
+                      <Flag className="w-3.5 h-3.5 text-rose-400 group-hover:translate-y-[-2px] transition-transform" />
+                      <span className="text-[9px] font-bold uppercase tracking-tighter">Resign</span>
                     </button>
                   </div>
                   <div className="flex gap-2">
-                    <button className="flex-1 flex items-center justify-center p-3 rounded-xl bg-white/5 opacity-50 cursor-not-allowed" title="Coming soon">
-                      <Undo2 className="w-4 h-4" />
+                    <button className="flex-1 flex items-center justify-center p-2 rounded-lg bg-white/5 opacity-50 cursor-not-allowed" title="Coming soon">
+                      <Undo2 className="w-3.5 h-3.5" />
                     </button>
-                    <button className="flex-1 flex items-center justify-center p-3 rounded-xl bg-white/5 opacity-50 cursor-not-allowed" title="Coming soon">
-                      <Redo2 className="w-4 h-4" />
+                    <button className="flex-1 flex items-center justify-center p-2 rounded-lg bg-white/5 opacity-50 cursor-not-allowed" title="Coming soon">
+                      <Redo2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
 
                 {/* Move History */}
-                <div className="glass-obsidian border border-white/5 rounded-3xl p-6 flex-1 flex flex-col min-h-[400px]">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-display font-bold flex items-center gap-2">
-                      <History className="w-5 h-5 text-[#e9c176]" />
+                <div className="glass-obsidian border border-white/5 rounded-2xl p-4 flex-1 flex flex-col min-h-0 overflow-hidden">
+                  <div className="flex items-center justify-between mb-4 shrink-0">
+                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#444748] flex items-center gap-2">
+                      <History className="w-3.5 h-3.5" />
                       Move History
                     </h3>
-                    <span className="px-2 py-1 rounded bg-white/5 text-[10px] font-bold text-[#8e9192]">
+                    <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/5 text-[9px] font-bold text-[#8e9192]">
                       {moveHistory.length} PLY
                     </span>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto custom-scrollbar pr-2" ref={desktopHistoryRef}>
+                  <div className="flex-1 overflow-y-auto custom-scrollbar pr-1" ref={desktopHistoryRef}>
                     {getMoveHistoryRows.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-30">
-                        <Swords className="w-12 h-12" />
-                        <p className="text-sm font-medium">No moves recorded yet</p>
+                      <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-20 py-12">
+                        <div className="relative">
+                          <Swords className="w-12 h-12" />
+                          <div className="absolute inset-0 blur-xl bg-[#e9c176]/20" />
+                        </div>
+                        <p className="text-[10px] font-bold uppercase tracking-widest">No moves recorded</p>
                       </div>
                     ) : (
-                      <table className="w-full text-sm">
-                        <thead className="sticky top-0 bg-[#0e0e0f]/90 backdrop-blur-sm z-10">
-                          <tr className="text-left border-b border-white/5">
-                            <th className="py-2 font-bold text-[#444748] uppercase text-[10px] tracking-widest w-12">#</th>
-                            <th className="py-2 font-bold text-[#444748] uppercase text-[10px] tracking-widest">White</th>
-                            <th className="py-2 font-bold text-[#444748] uppercase text-[10px] tracking-widest">Black</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/[0.02]">
-                          {getMoveHistoryRows.map((row) => (
-                            <tr key={row.moveNumber} className="group hover:bg-white/[0.02] transition-colors">
-                              <td className="py-3 font-mono text-[10px] text-[#444748]">{row.moveNumber}</td>
-                              <td className={`py-3 font-bold transition-colors ${row.white?.ply === latestMovePly ? 'text-[#e9c176]' : 'text-[#c4c7c7]'}`}>
-                                {row.white?.san ?? "—"}
-                              </td>
-                              <td className={`py-3 font-bold transition-colors ${row.black?.ply === latestMovePly ? 'text-[#e9c176]' : 'text-[#c4c7c7]'}`}>
-                                {row.black?.san ?? "—"}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <div className="space-y-1">
+                        {/* Header Labels */}
+                        <div className="grid grid-cols-[40px_1fr_1fr] text-[9px] font-black uppercase tracking-[0.15em] text-[#444748] mb-2 px-1">
+                          <div className="text-center">#</div>
+                          <div className="text-center">White</div>
+                          <div className="text-center">Black</div>
+                        </div>
+
+                        {getMoveHistoryRows.map((row) => (
+                          <div 
+                            key={row.moveNumber} 
+                            className="grid grid-cols-[44px_1fr_1fr] items-stretch group border-b border-white/[0.02] last:border-0"
+                          >
+                            {/* Move Number Column - Ticker Style */}
+                            <div className="flex items-center justify-center py-3 border-r border-white/[0.05] bg-black/20">
+                              <span className="font-mono text-[9px] font-black text-[#3f3f46] group-hover:text-[#e9c176]/40 transition-colors">
+                                {row.moveNumber.toString().padStart(2, '0')}
+                              </span>
+                            </div>
+
+                            {/* White Move */}
+                            <div className="relative px-1 py-1.5 flex items-center justify-center">
+                              {row.white && (
+                                <div className="relative w-full h-full flex items-center justify-center">
+                                  {row.white.ply === latestMovePly && (
+                                    <motion.div 
+                                      layoutId="active-pill"
+                                      className="absolute inset-0 z-0 bg-[#e9c176]/10 border border-[#e9c176]/20 rounded-lg shadow-[0_0_15px_rgba(233,193,118,0.05)]"
+                                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                    />
+                                  )}
+                                  <span className={`relative z-10 text-[13px] font-bold tracking-tight transition-colors duration-300 ${
+                                    row.white.ply === latestMovePly 
+                                      ? "text-[#e9c176]" 
+                                      : "text-[#fff6e9]/80 group-hover:text-[#fff6e9]"
+                                  }`}>
+                                    {row.white.san}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Black Move */}
+                            <div className="relative px-1 py-1.5 flex items-center justify-center border-l border-white/[0.05]">
+                              {row.black ? (
+                                <div className="relative w-full h-full flex items-center justify-center">
+                                  {row.black.ply === latestMovePly && (
+                                    <motion.div 
+                                      layoutId="active-pill"
+                                      className="absolute inset-0 z-0 bg-[#e9c176]/10 border border-[#e9c176]/20 rounded-lg shadow-[0_0_15px_rgba(233,193,118,0.05)]"
+                                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                    />
+                                  )}
+                                  <span className={`relative z-10 text-[13px] font-bold tracking-tight transition-colors duration-300 ${
+                                    row.black.ply === latestMovePly 
+                                      ? "text-[#e9c176]" 
+                                      : "text-[#94a3b8]/80 group-hover:text-[#cbd5e1]"
+                                  }`}>
+                                    {row.black.san}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="w-4 h-0.5 bg-white/5 rounded-full" />
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>

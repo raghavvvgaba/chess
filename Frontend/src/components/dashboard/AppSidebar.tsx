@@ -18,10 +18,11 @@ import {
 type AppSidebarProps = {
   chessUserId?: string | null;
   onCopyChessId?: () => void;
+  onStartOnlineMatch?: () => void;
   copyState?: "idle" | "copied" | "error";
 };
 
-function AppSidebar({ chessUserId, onCopyChessId, copyState = "idle" }: AppSidebarProps) {
+function AppSidebar({ chessUserId, onCopyChessId, onStartOnlineMatch, copyState = "idle" }: AppSidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { data: session } = authClient.useSession();
@@ -40,7 +41,6 @@ function AppSidebar({ chessUserId, onCopyChessId, copyState = "idle" }: AppSideb
 
   const navItems = [
     { path: "/", icon: <LayoutDashboard className="w-5 h-5" />, label: "Dashboard" },
-    { path: "/game", icon: <Swords className="w-5 h-5" />, label: "Play Online" },
     { path: "/bot", icon: <Cpu className="w-5 h-5" />, label: "Vs Computer" },
   ];
 
@@ -57,11 +57,11 @@ function AppSidebar({ chessUserId, onCopyChessId, copyState = "idle" }: AppSideb
 
       {/* Mobile Toggle Button */}
       <button
-        className="fixed top-6 left-6 z-[70] md:hidden rounded-2xl bg-[#201f20] border border-[#e9c176]/30 p-4 shadow-2xl hover:border-[#e9c176]/60 transition-all active:scale-95"
+        className="fixed top-4 left-4 z-[70] md:hidden rounded-xl bg-[#201f20]/90 backdrop-blur-md border border-[#e9c176]/20 p-3 shadow-xl hover:border-[#e9c176]/40 transition-all active:scale-95"
         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
       >
-        {isMobileMenuOpen ? <X className="w-6 h-6 text-[#e9c176]" /> : <Menu className="w-6 h-6 text-[#e9c176]" />}
+        {isMobileMenuOpen ? <X className="w-5 h-5 text-[#e9c176]" /> : <Menu className="w-5 h-5 text-[#e9c176]" />}
       </button>
 
       {/* Sidebar */}
@@ -93,6 +93,22 @@ function AppSidebar({ chessUserId, onCopyChessId, copyState = "idle" }: AppSideb
                 className="w-full bg-white/5 border border-white/5 rounded-2xl py-3 pl-11 pr-4 text-sm text-[#c4c7c7] placeholder:text-[#8e9192]/60 focus:outline-none focus:ring-2 focus:ring-[#e9c176]/20 focus:border-[#e9c176]/40 transition-all"
               />
             </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (onStartOnlineMatch) {
+                  onStartOnlineMatch();
+                } else {
+                  navigate("/", { state: { openMatchmaking: true } });
+                }
+                setIsMobileMenuOpen(false);
+              }}
+              className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-gold px-4 py-3 text-sm font-bold text-[#00184a] shadow-[0_10px_30px_rgba(233,193,118,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
+            >
+              <Swords className="w-4 h-4" />
+              New Match
+            </button>
           </div>
 
           {/* Navigation */}

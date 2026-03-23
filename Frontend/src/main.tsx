@@ -9,16 +9,13 @@ import PlayVsBot from './Pages/PlayVsBot.tsx'
 import DashboardPage from './Pages/DashboardPage.tsx'
 import { authClient } from './lib/auth-client.ts'
 import { SocketProvider } from './context/SocketContext.tsx'
+import LoadingState from './components/LoadingState.tsx'
 
 function RootPage() {
   const { data: session, isPending } = authClient.useSession()
 
   if (isPending) {
-    return (
-      <main className="min-h-screen bg-[#262522] text-white flex items-center justify-center">
-        Loading...
-      </main>
-    )
+    return <LoadingState message="Restoring Session" subtitle="Checking authentication..." />
   }
 
   if (session?.user?.id) {
