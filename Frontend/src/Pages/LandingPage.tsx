@@ -61,6 +61,14 @@ function LandingPage() {
               </button>
             </div>
             <div className="hidden md:flex items-center gap-6">
+              {isAuthenticated && (
+                <button
+                  onClick={() => navigate("/")}
+                  className="text-sm font-label text-[#e5e2e3]/80 hover:text-[#e5e2e3] transition-colors"
+                >
+                  Dashboard
+                </button>
+              )}
               <button
                 onClick={() => navigate(isAuthenticated ? "/game" : "/auth")}
                 className="text-sm font-label text-[#e5e2e3]/80 hover:text-[#e5e2e3] transition-colors"
@@ -88,12 +96,21 @@ function LandingPage() {
             </div>
             <div className="flex items-center gap-4">
               {isAuthenticated ? (
-                <button
-                  onClick={handleSignOut}
-                  className="px-4 py-2 rounded-full border border-[#e5e2e3]/20 text-sm font-label hover:bg-[#353436] transition-colors"
-                >
-                  Sign Out
-                </button>
+                <>
+                  <button
+                    onClick={() => navigate("/")}
+                    className="px-4 py-2 rounded-full border border-[#e5e2e3]/20 text-sm font-label hover:bg-[#353436] transition-colors flex items-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-sm">dashboard</span>
+                    <span className="hidden sm:inline">Dashboard</span>
+                  </button>
+                  <button
+                    onClick={handleSignOut}
+                    className="px-4 py-2 rounded-full border border-[#e5e2e3]/20 text-sm font-label hover:bg-[#353436] transition-colors"
+                  >
+                    Sign Out
+                  </button>
+                </>
               ) : (
                 <>
                   <button

@@ -12,6 +12,8 @@
   "dependencies": {
     "better-auth": "^1.5.4",
     "chess.js": "^1.4.0",
+    "framer-motion": "^12.38.0",
+    "lucide-react": "^0.577.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router": "^7.6.3"

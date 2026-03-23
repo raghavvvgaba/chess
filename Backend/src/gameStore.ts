@@ -3,6 +3,7 @@ import type { RuntimeMoveRecord } from "./runtimeGameStore.js";
 
 type GameStatus = "active" | "finished" | "aborted";
 type GameResult = "white" | "black" | "draw" | null;
+type MatchOutcome = "win" | "loss" | "draw" | "aborted" | "in_progress";
 
 type CreateGameInput = {
     whiteUserId: string;
@@ -85,4 +86,65 @@ export async function getGameById(gameId: string) {
     );
 
     return result.rows[0] ?? null;
+}
+
+export async function getMatchHistoryByUserId(userId: string, limit = 50) {
+    const cappedLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.floor(limit), 1), 100) : 50;
+
+    const result = await pool.query<{
+        id: string;
+        status: GameStatus;
+        result: GameResult;
+        started_at: string | null;
+        ended_at: string | null;
+        created_at: string;
+        player_color: "white" | "black";
+        opponent_user_id: string;
+        opponent_name: string;
+        outcome: MatchOutcome;
+    }>(
+        `SELECT
+            g.id,
+            g.status,
+            g.result,
+            g.started_at,
+            g.ended_at,
+            g.created_at,
+            CASE
+                WHEN g.white_user_id = $1 THEN 'white'
+                ELSE 'black'
+            END AS player_color,
+            CASE
+                WHEN g.white_user_id = $1 THEN g.black_user_id
+                ELSE g.white_user_id
+            END AS opponent_user_id,
+            COALESCE(
+                CASE
+                    WHEN g.white_user_id = $1 THEN NULLIF(TRIM(black_user.name), '')
+                    ELSE NULLIF(TRIM(white_user.name), '')
+                END,
+                CASE
+                    WHEN g.white_user_id = $1 THEN NULLIF(SPLIT_PART(black_user.email, '@', 1), '')
+                    ELSE NULLIF(SPLIT_PART(white_user.email, '@', 1), '')
+                END,
+                'Unknown Player'
+            ) AS opponent_name,
+            CASE
+                WHEN g.status = 'active' THEN 'in_progress'
+                WHEN g.status = 'aborted' THEN 'aborted'
+                WHEN g.result = 'draw' THEN 'draw'
+                WHEN (g.result = 'white' AND g.white_user_id = $1)
+                    OR (g.result = 'black' AND g.black_user_id = $1) THEN 'win'
+                ELSE 'loss'
+            END AS outcome
+        FROM games g
+        LEFT JOIN "user" white_user ON white_user.id = g.white_user_id
+        LEFT JOIN "user" black_user ON black_user.id = g.black_user_id
+        WHERE g.white_user_id = $1 OR g.black_user_id = $1
+        ORDER BY COALESCE(g.ended_at, g.started_at, g.created_at) DESC
+        LIMIT $2`,
+        [userId, cappedLimit]
+    );
+
+    return result.rows;
 }

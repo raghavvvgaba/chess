@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Chess, type Square } from "chess.js";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams, useLocation } from "react-router";
 import ChessBoard from "../components/ChessBoard";
 import MatchConclusionModal from "../components/game/MatchConclusionModal";
 import PromotionModal from "../components/game/PromotionModal";
@@ -109,6 +109,8 @@ const DEFAULT_OPPONENT_CONNECTION_STATE: OpponentConnectionState = {
 
 const RECONNECTED_BANNER_DURATION_MS = 3000;
 
+const normalizeRoomCode = (value: string | null) => (value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
 const getPlayerDisplayName = (value: unknown, fallback: string) => {
     if (typeof value !== "string") {
         return fallback;
@@ -140,12 +142,14 @@ const getCheckedKingSquare = (chess: Chess): Square | null => {
 
 function Game() {
     const navigate = useNavigate();
+    const location = useLocation();
+    const [searchParams] = useSearchParams();
     const socket = useSocket();
+    const roomCode = normalizeRoomCode(searchParams.get("room"));
     const chessRef = useRef(new Chess());
     const [board, setBoard] = useState(chessRef.current.board());
     const [gameState, setGameState] = useState<GameState>("idle");
     const [statusMessage, setStatusMessage] = useState<string>("");
-    const [cancelRequested, setCancelRequested] = useState(false);
     const [playerColor, setPlayerColor] = useState<PlayerColor>(null);
     const [currentTurn, setCurrentTurn] = useState<Turn>("w");
     const [currentFen, setCurrentFen] = useState<string>(chessRef.current.fen());
@@ -162,6 +166,41 @@ function Game() {
     const [connectionNowMs, setConnectionNowMs] = useState(() => Date.now());
     const desktopHistoryRef = useRef<HTMLDivElement | null>(null);
     const mobileHistoryRef = useRef<HTMLDivElement | null>(null);
+
+    const initializeGameFromPayload = (payload: any) => {
+        chessRef.current = new Chess();
+        if (typeof payload?.fen === "string") {
+            try {
+                chessRef.current.load(payload.fen);
+            } catch (e) {
+                console.log(e);
+            }
+        }
+        setBoard(chessRef.current.board());
+        setCurrentTurn(chessRef.current.turn());
+        setCurrentFen(chessRef.current.fen());
+        setCheckedKingSquare(getCheckedKingSquare(chessRef.current));
+        setGameState("in_game");
+        setStatusMessage("");
+        setPlayerColor(payload?.color === "black" ? "black" : "white");
+        setMyPlayerName(getPlayerDisplayName(payload?.playerName, "User 1"));
+        setOpponentPlayerName(getPlayerDisplayName(payload?.opponentName, "User 2"));
+        setMatchConclusion(DEFAULT_MATCH_CONCLUSION);
+        setLastMove(null);
+        setMoveHistory(parseInitMoveHistory(payload?.moveHistory));
+        setPendingPromotion(DEFAULT_PENDING_PROMOTION);
+        setOpponentConnectionState(DEFAULT_OPPONENT_CONNECTION_STATE);
+        setQuitRequested(false);
+        setQuitDialogOpen(false);
+    };
+
+    useEffect(() => {
+        if (location.state?.initialGameData) {
+            initializeGameFromPayload(location.state.initialGameData);
+            // Clear location state to prevent re-initialization on back nav etc
+            navigate(location.pathname + location.search, { replace: true, state: {} });
+        }
+    }, []);
 
     const parseInitMoveHistory = (value: unknown): MoveHistoryEntry[] => {
         if (!Array.isArray(value)) {
@@ -260,64 +299,24 @@ function Game() {
 
             switch (message.type) {
                 case INIT_GAME:
-                    chessRef.current = new Chess();
-                    if (typeof message.payload?.fen === "string") {
-                        try {
-                            chessRef.current.load(message.payload.fen);
-                        } catch (e) {
-                            console.log(e);
-                        }
+                    if (message.payload) {
+                        initializeGameFromPayload(message.payload);
                     }
-                    syncBoardStateFromChess();
-                    setGameState("in_game");
-                    setStatusMessage("");
-                    setCancelRequested(false);
-                    setPlayerColor(message.payload?.color === "black" ? "black" : "white");
-                    setMyPlayerName(getPlayerDisplayName(message.payload?.playerName, "User 1"));
-                    setOpponentPlayerName(getPlayerDisplayName(message.payload?.opponentName, "User 2"));
-                    setMatchConclusion(DEFAULT_MATCH_CONCLUSION);
-                    setLastMove(null);
-                    setMoveHistory(parseInitMoveHistory(message.payload?.moveHistory));
-                    setPendingPromotion(DEFAULT_PENDING_PROMOTION);
-                    setOpponentConnectionState(DEFAULT_OPPONENT_CONNECTION_STATE);
-                    setQuitRequested(false);
-                    setQuitDialogOpen(false);
                     break;
                 case WAITING_FOR_OPPONENT:
-                    setGameState("waiting");
-                    setStatusMessage("Waiting for another player to join...");
-                    setCancelRequested(false);
-                    setCurrentTurn(null);
-                    setCheckedKingSquare(null);
-                    setMyPlayerName("User 1");
-                    setOpponentPlayerName("User 2");
-                    setPendingPromotion(DEFAULT_PENDING_PROMOTION);
-                    setOpponentConnectionState(DEFAULT_OPPONENT_CONNECTION_STATE);
+                    // If we're on the Game page and it says waiting, we should probably redirect home
+                    // so the user can use the dashboard matchmaking modal.
+                    navigate("/", { replace: true });
                     break;
                 case ALREADY_WAITING:
-                    setGameState("waiting_elsewhere");
-                    setStatusMessage("Matchmaking is already active in another tab. Return there to manage or cancel it.");
-                    setCancelRequested(false);
-                    setCurrentTurn(null);
-                    setCheckedKingSquare(null);
-                    setMyPlayerName("User 1");
-                    setOpponentPlayerName("User 2");
-                    setPendingPromotion(DEFAULT_PENDING_PROMOTION);
-                    setOpponentConnectionState(DEFAULT_OPPONENT_CONNECTION_STATE);
+                    navigate("/", { replace: true });
                     break;
                 case ALREADY_IN_GAME:
-                    setGameState("idle");
-                    setStatusMessage("You already have an active match.");
-                    setCancelRequested(false);
-                    setCurrentTurn(null);
-                    setCheckedKingSquare(null);
-                    setPendingPromotion(DEFAULT_PENDING_PROMOTION);
-                    setOpponentConnectionState(DEFAULT_OPPONENT_CONNECTION_STATE);
+                    // Handled by the server sending INIT_GAME payload automatically for reattaches
                     break;
                 case MATCHMAKING_CANCELLED:
                     setGameState("idle");
                     setStatusMessage("Matchmaking cancelled.");
-                    setCancelRequested(false);
                     setPlayerColor(null);
                     setCurrentTurn(null);
                     setCheckedKingSquare(null);
@@ -326,7 +325,7 @@ function Game() {
                     setOpponentPlayerName("User 2");
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
                     setOpponentConnectionState(DEFAULT_OPPONENT_CONNECTION_STATE);
-                    navigate("/");
+                    navigate("/", { replace: true });
                     break;
                 case MOVE_APPLIED:
                     if (typeof message.payload?.fen === "string") {
@@ -591,6 +590,36 @@ function Game() {
         };
     }, [opponentConnectionState.isReconnected]);
 
+    if (roomCode) {
+        return (
+            <main className="min-h-screen bg-[#262522] flex items-center justify-center p-4">
+                <section className="w-full max-w-xl bg-[#2f2e2b] border border-[#45433f] rounded-xl p-8 text-center text-white space-y-4 shadow-lg">
+                    <h1 className="text-3xl font-bold">Private Rooms Unavailable</h1>
+                    <p className="text-gray-300">
+                        Room codes and direct invites are temporarily offline while this feature is being rebuilt.
+                    </p>
+                    <p className="text-sm text-gray-400">
+                        You can still use public matchmaking or play against the bot from the dashboard.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <button
+                            onClick={() => navigate("/game", { replace: true })}
+                            className="w-full bg-[#b58863] hover:bg-[#a0764b] text-white font-bold text-lg px-6 py-4 rounded-xl shadow transition-colors"
+                        >
+                            Open Public Match
+                        </button>
+                        <button
+                            onClick={() => navigate("/", { replace: true })}
+                            className="w-full bg-[#4a4a48] hover:bg-[#5a5a58] text-white font-bold text-lg px-6 py-4 rounded-xl shadow transition-colors"
+                        >
+                            Back Home
+                        </button>
+                    </div>
+                </section>
+            </main>
+        );
+    }
+
     if (!socket) {
         return <div>Connecting...</div>;
     }
@@ -755,47 +784,6 @@ function Game() {
             imageSrc: `/Pieces/${playerColor === "black" ? piece : `w${piece}`}.png`
         }));
 
-    const handleStartGame = () => {
-        if (gameState !== "idle") {
-            return;
-        }
-        socket.send(JSON.stringify({
-            type: INIT_GAME
-        }));
-        setGameState("waiting");
-        setStatusMessage("Waiting for another player to join...");
-        setCancelRequested(false);
-        setPlayerColor(null);
-        setCurrentTurn(null);
-        setCheckedKingSquare(null);
-        setLastMove(null);
-        setMyPlayerName("User 1");
-        setOpponentPlayerName("User 2");
-        setPendingPromotion(DEFAULT_PENDING_PROMOTION);
-    };
-
-    const handleCancelMatchmaking = () => {
-        if (gameState !== "waiting" || cancelRequested) {
-            return;
-        }
-        setCancelRequested(true);
-        if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-                type: CANCEL_MATCHMAKING
-            }));
-        }
-        setGameState("idle");
-        setStatusMessage("Matchmaking cancelled.");
-        setPlayerColor(null);
-        setCurrentTurn(null);
-        setCheckedKingSquare(null);
-        setLastMove(null);
-        setMyPlayerName("User 1");
-        setOpponentPlayerName("User 2");
-        setPendingPromotion(DEFAULT_PENDING_PROMOTION);
-        navigate("/", { replace: true });
-    };
-
     const handleRematchRequest = () => {
         if (!matchConclusion.isOpen || isRematchButtonDisabled) {
             return;
@@ -848,43 +836,8 @@ function Game() {
         return (
             <main className="min-h-screen bg-[#262522] flex items-center justify-center p-4">
                 <section className="w-full max-w-xl bg-[#2f2e2b] border border-[#45433f] rounded-xl p-8 text-center text-white space-y-4 shadow-lg">
-                    {gameState === "idle" && (
-                        <>
-                            <h1 className="text-3xl font-bold">Start a Match</h1>
-                            <p className="text-gray-300">Click below to enter matchmaking.</p>
-                            <button
-                                onClick={handleStartGame}
-                                className="w-full bg-[#b58863] hover:bg-[#a0764b] text-white font-bold text-xl px-6 py-4 rounded-xl shadow transition-colors"
-                            >
-                                Start Game
-                            </button>
-                        </>
-                    )}
-                    {gameState === "waiting" && (
-                        <>
-                            <h1 className="text-3xl font-bold">Waiting for another player...</h1>
-                            <p className="text-gray-300">You will be moved to the board automatically when a match is found.</p>
-                            <button
-                                onClick={handleCancelMatchmaking}
-                                disabled={cancelRequested}
-                                className={`w-full text-white font-bold text-xl px-6 py-4 rounded-xl shadow transition-colors ${cancelRequested ? "bg-[#6e614f] text-gray-200 cursor-not-allowed" : "bg-[#4a4a48] hover:bg-[#5a5a58]"}`}
-                            >
-                                {cancelRequested ? "Cancel requested..." : "Cancel Matchmaking"}
-                            </button>
-                        </>
-                    )}
-                    {gameState === "waiting_elsewhere" && (
-                        <>
-                            <h1 className="text-3xl font-bold">Matchmaking Is Active Elsewhere</h1>
-                            <p className="text-gray-300">Return to the original tab to keep waiting or cancel the search from there.</p>
-                            <button
-                                onClick={() => navigate("/", { replace: true })}
-                                className="w-full bg-[#4a4a48] hover:bg-[#5a5a58] text-white font-bold text-xl px-6 py-4 rounded-xl shadow transition-colors"
-                            >
-                                Back Home
-                            </button>
-                        </>
-                    )}
+                    <h1 className="text-3xl font-bold">Connecting...</h1>
+                    <p className="text-gray-300">Setting up the board.</p>
                     {statusMessage && <p className="text-sm text-gray-400">{statusMessage}</p>}
                 </section>
             </main>

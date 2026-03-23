@@ -7,9 +7,11 @@ import { WebSocketServer } from "ws";
 import { auth } from "./auth.js";
 import { verifyDatabaseConnection } from "./db.js";
 import { GameManager } from "./GameManager.js";
+import { getMatchHistoryByUserId } from "./gameStore.js";
 import { closeRedisConnection, verifyRedisConnection } from "./redis.js";
 import { startRuntimeGameFlusher } from "./runtimeGameFlusher.js";
 import type { AuthenticatedSocket } from "./socketTypes.js";
+import { getUserProfileById } from "./userStore.js";
 
 const port = Number(process.env.PORT ?? 8080);
 const frontendOrigin = process.env.FRONTEND_ORIGIN ?? "http://localhost:5173";
@@ -35,6 +37,52 @@ async function bootstrap() {
     app.all("/api/auth/*splat", toNodeHandler(auth));
     app.get("/health", (_req, res) => {
         res.json({ ok: true });
+    });
+
+    app.get("/api/matches/history", async (req, res) => {
+        try {
+            const session = await auth.api.getSession({
+                headers: fromNodeHeaders(req.headers)
+            });
+
+            if (!session?.user?.id) {
+                res.status(401).json({ message: "Unauthorized" });
+                return;
+            }
+
+            const limitParam = Number(req.query.limit);
+            const limit = Number.isFinite(limitParam) ? limitParam : 50;
+            const matches = await getMatchHistoryByUserId(session.user.id, limit);
+            res.json({ matches });
+        } catch (error) {
+            console.error("Failed to fetch match history:", error);
+            res.status(500).json({ message: "Failed to fetch match history" });
+        }
+    });
+
+    app.get("/api/me", async (req, res) => {
+        try {
+            const session = await auth.api.getSession({
+                headers: fromNodeHeaders(req.headers)
+            });
+
+            if (!session?.user?.id) {
+                res.status(401).json({ message: "Unauthorized" });
+                return;
+            }
+
+            const profile = await getUserProfileById(session.user.id);
+
+            if (!profile) {
+                res.status(404).json({ message: "Profile not found" });
+                return;
+            }
+
+            res.json({ profile });
+        } catch (error) {
+            console.error("Failed to fetch profile:", error);
+            res.status(500).json({ message: "Failed to fetch profile" });
+        }
     });
 
     const server = http.createServer(app);
