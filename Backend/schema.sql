@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS games (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   white_user_id TEXT NOT NULL REFERENCES "user"(id),
   black_user_id TEXT NOT NULL REFERENCES "user"(id),
+  room_code TEXT NOT NULL,
   status game_status NOT NULL DEFAULT 'active',
   result game_result,
   started_at TIMESTAMPTZ,
@@ -33,6 +34,7 @@ CREATE INDEX IF NOT EXISTS idx_moves_game_id ON moves (game_id);
 CREATE INDEX IF NOT EXISTS idx_games_white_user_id ON games (white_user_id);
 CREATE INDEX IF NOT EXISTS idx_games_black_user_id ON games (black_user_id);
 CREATE INDEX IF NOT EXISTS idx_games_status ON games (status);
+CREATE UNIQUE INDEX IF NOT EXISTS games_room_code_unique_idx ON games (room_code);
 
 CREATE TABLE IF NOT EXISTS friendships (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

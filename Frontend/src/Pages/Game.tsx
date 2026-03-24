@@ -28,6 +28,11 @@ export const PLAYER_CONNECTION_STATE = "player_connection_state";
 export const QUIT_GAME = "quit_game";
 export const RECONNECT_GAME = "reconnect_game";
 export const LEAVE_GAME_VIEW = "leave_game_view";
+export const CREATE_ROOM = "create_room";
+export const JOIN_ROOM = "join_room";
+export const CANCEL_ROOM = "cancel_room";
+export const ROOM_CREATED = "room_created";
+export const ROOM_JOIN_FAILED = "room_join_failed";
 
 type GameState = "idle" | "waiting" | "waiting_elsewhere" | "in_game";
 type PlayerColor = "white" | "black" | null;
@@ -209,6 +214,7 @@ function Game() {
         if (initialGameData) {
             initializeGameFromPayload(initialGameData);
             reconnectRequestSentRef.current = false;
+            leaveGameViewSentRef.current = false;
             // Clear location state to prevent re-initialization on back nav etc
             navigate(location.pathname + location.search, { replace: true, state: {} });
         }
@@ -224,7 +230,24 @@ function Game() {
     }, []);
 
     useEffect(() => {
+        if (!roomCode) {
+            return;
+        }
+        navigate("/", {
+            replace: true,
+            state: {
+                openMatchmaking: true,
+                prefillRoomCode: roomCode,
+                autoJoinRoom: true,
+            },
+        });
+    }, [roomCode, navigate]);
+
+    useEffect(() => {
         if (!socket || socket.readyState !== WebSocket.OPEN) {
+            return;
+        }
+        if (roomCode) {
             return;
         }
         if (initialGameData) {
@@ -246,7 +269,7 @@ function Game() {
         socket.send(JSON.stringify({
             type: RECONNECT_GAME
         }));
-    }, [socket, gameState, initialGameData]);
+    }, [socket, gameState, initialGameData, roomCode]);
 
     useEffect(() => {
         latestGameStateRef.current = gameState;
@@ -263,9 +286,13 @@ function Game() {
                 !leaveGameViewSentRef.current
             ) {
                 leaveGameViewSentRef.current = true;
-                activeSocket.send(JSON.stringify({
-                    type: LEAVE_GAME_VIEW
-                }));
+                try {
+                    activeSocket.send(JSON.stringify({
+                        type: LEAVE_GAME_VIEW
+                    }));
+                } catch {
+                    // socket may close during teardown
+                }
             }
         };
     }, []);
@@ -465,6 +492,14 @@ function Game() {
                         }, 900);
                         break;
                     }
+                    if (message.payload?.reason === "already_in_game") {
+                        setStatusMessage("You are already in a game.");
+                        break;
+                    }
+                    if (message.payload?.reason === "already_waiting") {
+                        setStatusMessage("Finish or cancel your current queue first.");
+                        break;
+                    }
                     setStatusMessage(getActionRejectedMessage(message.payload?.reason));
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
                     setQuitRequested(false);
@@ -604,7 +639,7 @@ function Game() {
         return () => {
             socket.onmessage = null;
         };
-    }, [socket, navigate, playerColor]);
+    }, [socket, navigate, playerColor, gameState]);
 
     useEffect(() => {
         const scrollToBottom = (element: HTMLDivElement | null) => {
@@ -669,37 +704,15 @@ function Game() {
     }, [opponentConnectionState.isReconnected]);
 
     if (roomCode) {
-        return (
-            <main className="min-h-screen bg-[#262522] flex items-center justify-center p-4">
-                <section className="w-full max-w-xl bg-[#2f2e2b] border border-[#45433f] rounded-xl p-8 text-center text-white space-y-4 shadow-lg">
-                    <h1 className="text-3xl font-bold">Private Rooms Unavailable</h1>
-                    <p className="text-gray-300">
-                        Room codes and direct invites are temporarily offline while this feature is being rebuilt.
-                    </p>
-                    <p className="text-sm text-gray-400">
-                        You can still use public matchmaking or play against the bot from the dashboard.
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <button
-                            onClick={() => navigate("/game", { replace: true })}
-                            className="w-full bg-[#b58863] hover:bg-[#a0764b] text-white font-bold text-lg px-6 py-4 rounded-xl shadow transition-colors"
-                        >
-                            Open Public Match
-                        </button>
-                        <button
-                            onClick={() => navigate("/", { replace: true })}
-                            className="w-full bg-[#4a4a48] hover:bg-[#5a5a58] text-white font-bold text-lg px-6 py-4 rounded-xl shadow transition-colors"
-                        >
-                            Back Home
-                        </button>
-                    </div>
-                </section>
-            </main>
-        );
+        return <LoadingState message="Opening room..." subtitle="Redirecting to dashboard" />;
     }
 
     if (!socket) {
         return <div>Connecting...</div>;
+    }
+
+    if (gameState !== "in_game") {
+        return <LoadingState message="Connecting..." subtitle={statusMessage || "Setting up the board"} />;
     }
 
     const getConclusionTitle = () => {
@@ -963,9 +976,13 @@ function Game() {
         setPendingPromotion(DEFAULT_PENDING_PROMOTION);
         if (socket && socket.readyState === WebSocket.OPEN && !leaveGameViewSentRef.current) {
             leaveGameViewSentRef.current = true;
-            socket.send(JSON.stringify({
-                type: LEAVE_GAME_VIEW
-            }));
+            try {
+                socket.send(JSON.stringify({
+                    type: LEAVE_GAME_VIEW
+                }));
+            } catch {
+                // socket may close during navigation
+            }
         }
         navigate("/", { replace: true });
     };

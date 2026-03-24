@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
 import { authClient } from "../lib/auth-client";
+import { Linkedin, Github, Twitter } from "lucide-react";
 
 function LandingPage() {
   const navigate = useNavigate();
@@ -25,19 +26,19 @@ function LandingPage() {
 
   const features = [
     {
-      icon: "analytics",
-      title: "Real-time AI Analysis",
-      description: "Receive instant tactical evaluations and strategic insights powered by advanced chess engines."
+      icon: "people",
+      title: "Quick Matchmaking",
+      description: "Join the public queue and find an online opponent."
     },
     {
       icon: "smart_toy",
-      title: "Play Against Grandmaster AI",
-      description: "Challenge our advanced AI opponent trained on historic grandmaster games and perfect your strategy."
+      title: "Play Against AI",
+      description: "Practice against the computer with selectable difficulty."
     },
     {
-      icon: "emoji_events",
-      title: "Mastery Leaderboards",
-      description: "Compete against grandmasters and track your ascent through the ranks of elite players."
+      icon: "lock",
+      title: "Private Rooms",
+      description: "Create a room code and invite someone to join."
     }
   ];
 
@@ -56,8 +57,7 @@ function LandingPage() {
                 onClick={() => navigate("/")}
                 className="flex items-center gap-2 hover:opacity-80 transition-opacity"
               >
-                <span className="material-symbols-outlined text-[#e9c176] text-3xl">psychology</span>
-                <span className="font-headline font-bold text-xl text-[#e9c176]">The Grandmaster's Ledger</span>
+                <span className="font-headline font-bold text-xl text-[#e9c176]">chess</span>
               </button>
             </div>
             <div className="hidden md:flex items-center gap-6">
@@ -69,30 +69,6 @@ function LandingPage() {
                   Dashboard
                 </button>
               )}
-              <button
-                onClick={() => navigate(isAuthenticated ? "/game" : "/auth")}
-                className="text-sm font-label text-[#e5e2e3]/80 hover:text-[#e5e2e3] transition-colors"
-              >
-                Play
-              </button>
-              <button
-                onClick={() => navigate(isAuthenticated ? "/game" : "/auth")}
-                className="text-sm font-label text-[#e5e2e3]/80 hover:text-[#e5e2e3] transition-colors"
-              >
-                Puzzles
-              </button>
-              <button
-                onClick={() => navigate("/")}
-                className="text-sm font-label text-[#e5e2e3]/80 hover:text-[#e5e2e3] transition-colors"
-              >
-                Learn
-              </button>
-              <button
-                onClick={() => navigate("/")}
-                className="text-sm font-label text-[#e5e2e3]/80 hover:text-[#e5e2e3] transition-colors"
-              >
-                Community
-              </button>
             </div>
             <div className="flex items-center gap-4">
               {isAuthenticated ? (
@@ -113,12 +89,6 @@ function LandingPage() {
                 </>
               ) : (
                 <>
-                  <button
-                    onClick={() => navigate("/auth")}
-                    className="px-4 py-2 text-sm font-label text-[#e5e2e3]/80 hover:text-[#e5e2e3] transition-colors"
-                  >
-                    Sign In
-                  </button>
                   <button
                     onClick={() => navigate("/auth")}
                     className="px-5 py-2 rounded-full bg-gradient-gold text-[#00184a] text-sm font-label font-semibold hover:opacity-90 transition-opacity"
@@ -161,12 +131,6 @@ function LandingPage() {
                 >
                   Start Playing
                 </button>
-                <button
-                  onClick={() => navigate(isAuthenticated ? "/bot" : "/auth")}
-                  className="px-8 py-4 rounded-full bg-gradient-gold text-[#00184a] font-label font-semibold text-lg btn-glow-hover hover:-translate-y-0.5 transition-all"
-                >
-                  Play with Bot
-                </button>
               </div>
             </div>
 
@@ -174,18 +138,12 @@ function LandingPage() {
             <div className="relative flex justify-center">
               <div className="absolute -inset-4 bg-gradient-gold opacity-20 blur-2xl rounded-2xl animate-glow" />
               <div className="relative w-full max-w-md glass-obsidian rounded-2xl border border-[#e5e2e3]/10 p-6 animate-float">
-                <div className="aspect-video rounded-xl bg-[#1c1b1c] flex items-center justify-center border border-[#353436] overflow-hidden">
-                  <div className="text-center p-8">
-                    <span className="material-symbols-outlined text-8xl text-[#e9c176]/80">history_edu</span>
-                  </div>
-                </div>
-                <div className="mt-4 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[#e9c176] text-sm">star</span>
-                    <span className="text-sm font-label text-[#e9c176]">Today's Grandmaster Feature</span>
-                  </div>
-                  <h3 className="font-headline text-xl text-[#e5e2e3]">Mikhail's Defense</h3>
-                  <p className="text-sm text-[#c4c7c7]">Analyze the historic 1960 endgame.</p>
+                <div className="aspect-video rounded-xl bg-[#1c1b1c] overflow-hidden">
+                  <img
+                    src="https://commons.wikimedia.org/wiki/Special:FilePath/Chess_board_(top_view).jpg"
+                    alt="Chess board"
+                    className="w-full h-full object-cover"
+                  />
                 </div>
               </div>
             </div>
@@ -250,8 +208,7 @@ function LandingPage() {
           <div className="grid md:grid-cols-4 gap-8 mb-8">
             <div className="md:col-span-2">
               <div className="flex items-center gap-2 mb-4">
-                <span className="material-symbols-outlined text-[#e9c176] text-2xl">psychology</span>
-                <span className="font-headline font-bold text-lg text-[#e9c176]">The Grandmaster's Ledger</span>
+                <span className="font-headline font-bold text-lg text-[#e9c176]">Chess</span>
               </div>
               <p className="text-[#c4c7c7] max-w-sm">
                 Where precision meets intellect. A refined chess experience for the modern classicist.
@@ -274,8 +231,24 @@ function LandingPage() {
             </div>
           </div>
           <div className="pt-8 border-t border-[#444748]/30 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div className="flex items-center gap-6">
+              <a href="https://www.linkedin.com/in/raghavvvgaba/" target="_blank" rel="noopener noreferrer" className="text-[#c4c7c7] hover:text-[#e9c176] transition-colors">
+                <Linkedin className="w-5 h-5" />
+              </a>
+              <a href="https://github.com/raghavvvgaba" target="_blank" rel="noopener noreferrer" className="text-[#c4c7c7] hover:text-[#e9c176] transition-colors">
+                <Github className="w-5 h-5" />
+              </a>
+              <a href="https://x.com/raghavvvgaba" target="_blank" rel="noopener noreferrer" className="text-[#c4c7c7] hover:text-[#e9c176] transition-colors">
+                <Twitter className="w-5 h-5" />
+              </a>
+            </div>
             <p className="text-sm text-[#8e9192]">
-              © 2026 The Grandmaster's Ledger. All rights reserved.
+              © 2026 Chess. All rights reserved.
+            </p>
+          </div>
+          <div className="flex justify-end mt-2">
+            <p className="text-sm text-[#8e9192]">
+              Made by Raghav Gaba
             </p>
           </div>
         </div>

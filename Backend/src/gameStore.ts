@@ -8,6 +8,7 @@ type MatchOutcome = "win" | "loss" | "draw" | "aborted" | "in_progress";
 type CreateGameInput = {
     whiteUserId: string;
     blackUserId: string;
+    roomCode: string;
 };
 
 type SaveMoveInput = {
@@ -27,12 +28,20 @@ type FinishGameInput = {
 
 export async function createGame(input: CreateGameInput) {
     const result = await pool.query<{ id: string }>(
-        `INSERT INTO games (white_user_id, black_user_id, status, started_at)
-         VALUES ($1, $2, 'active', now())
+        `INSERT INTO games (white_user_id, black_user_id, room_code, status, started_at)
+         VALUES ($1, $2, $3, 'active', now())
          RETURNING id`,
-        [input.whiteUserId, input.blackUserId]
+        [input.whiteUserId, input.blackUserId, input.roomCode]
     );
     return result.rows[0];
+}
+
+export async function isRoomCodeTaken(roomCode: string) {
+    const result = await pool.query<{ exists: boolean }>(
+        `SELECT EXISTS(SELECT 1 FROM games WHERE room_code = $1) AS exists`,
+        [roomCode]
+    );
+    return !!result.rows[0]?.exists;
 }
 
 export async function saveMove(input: SaveMoveInput) {

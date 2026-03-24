@@ -6,10 +6,20 @@ type MatchmakingModalProps = {
   onStart: () => void;
   onCancel: () => void;
   onReconnect: () => void;
+  onCreateRoom: () => void;
+  onJoinRoom: () => void;
+  onRoomCodeInputChange: (value: string) => void;
+  onCopyRoomCode: () => void;
+  onCopyInviteLink: () => void;
   gameState: "idle" | "waiting";
   statusMessage?: string;
   cancelRequested: boolean;
   showReconnectAction: boolean;
+  roomCodeInput: string;
+  createdRoomCode: string;
+  roomActionPending: boolean;
+  roomInviteLink: string;
+  roomExpiresInLabel?: string;
 };
 
 function MatchmakingModal({
@@ -18,10 +28,20 @@ function MatchmakingModal({
   onStart,
   onCancel,
   onReconnect,
+  onCreateRoom,
+  onJoinRoom,
+  onRoomCodeInputChange,
+  onCopyRoomCode,
+  onCopyInviteLink,
   gameState,
   statusMessage,
   cancelRequested,
   showReconnectAction,
+  roomCodeInput,
+  createdRoomCode,
+  roomActionPending,
+  roomInviteLink,
+  roomExpiresInLabel,
 }: MatchmakingModalProps) {
   if (!isOpen) return null;
 
@@ -60,12 +80,86 @@ function MatchmakingModal({
           </div>
 
           {gameState === "idle" && !showReconnectAction ? (
-            <button
-              onClick={onStart}
-              className="w-full py-4 bg-gradient-gold rounded-2xl text-[#00184a] font-bold text-lg hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-[#e9c176]/10 btn-glow-hover"
-            >
-              Start Finding Match
-            </button>
+            <div className="space-y-4">
+              <button
+                onClick={onStart}
+                className="w-full py-4 bg-gradient-gold rounded-2xl text-[#00184a] font-bold text-lg hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-[#e9c176]/10 btn-glow-hover"
+              >
+                Start Finding Match
+              </button>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center" aria-hidden>
+                  <div className="w-full border-t border-white/10" />
+                </div>
+                <div className="relative flex justify-center">
+                  <span className="bg-[#171613] px-3 text-[11px] uppercase tracking-[0.18em] text-[#8e9192]">Private Room</span>
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left">
+                {!createdRoomCode ? (
+                  <button
+                    onClick={onCreateRoom}
+                    disabled={roomActionPending}
+                    className="w-full py-3 rounded-xl bg-[#b58863] hover:bg-[#a0764b] text-white font-bold transition-colors disabled:opacity-60"
+                  >
+                    {roomActionPending ? "Working..." : "Create Private Room"}
+                  </button>
+                ) : null}
+
+                {createdRoomCode ? (
+                  <div className="space-y-2 rounded-xl border border-[#e9c176]/25 bg-[#201d18] p-3">
+                    <p className="text-[11px] uppercase tracking-[0.16em] text-[#e9c176]/80">Share this room code</p>
+                    <p className="font-mono text-xl font-bold tracking-[0.2em] text-[#e9c176]">{createdRoomCode}</p>
+                    {roomExpiresInLabel ? (
+                      <p className="text-xs text-[#c4c7c7]">Waiting for opponent to join. Expires in {roomExpiresInLabel}.</p>
+                    ) : (
+                      <p className="text-xs text-[#c4c7c7]">Waiting for opponent to join...</p>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={onCopyRoomCode}
+                        className="rounded-lg border border-white/15 py-2 text-xs font-semibold hover:bg-white/5"
+                      >
+                        Copy Code
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onCopyInviteLink}
+                        className="rounded-lg border border-white/15 py-2 text-xs font-semibold hover:bg-white/5"
+                      >
+                        Copy Link
+                      </button>
+                    </div>
+                    <p className="break-all text-xs text-[#c4c7c7]">{roomInviteLink}</p>
+                  </div>
+                ) : null}
+
+                {!createdRoomCode ? (
+                  <div className="space-y-2">
+                    <label className="text-[11px] uppercase tracking-[0.16em] text-[#8e9192]">Join Room</label>
+                    <div className="flex gap-2">
+                      <input
+                        value={roomCodeInput}
+                        onChange={(event) => onRoomCodeInputChange(event.target.value)}
+                        maxLength={6}
+                        placeholder="Enter room code"
+                        className="flex-1 rounded-lg border border-white/10 bg-[#1f1e1b] px-3 py-2 font-mono text-sm tracking-[0.16em] uppercase focus:outline-none focus:ring-2 focus:ring-[#e9c176]/30"
+                      />
+                      <button
+                        onClick={onJoinRoom}
+                        disabled={roomActionPending}
+                        className="rounded-lg bg-white/10 px-4 py-2 text-sm font-bold text-white hover:bg-white/15 disabled:opacity-60"
+                      >
+                        Join
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
           ) : gameState === "idle" && showReconnectAction ? (
             <div className="space-y-3">
               <button

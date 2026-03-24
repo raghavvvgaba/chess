@@ -6,6 +6,9 @@ import useSocket from "../hooks/useSocket";
 import MatchmakingModal from "../components/dashboard/MatchmakingModal";
 import SocialDrawer from "../components/dashboard/SocialDrawer";
 import {
+  CANCEL_ROOM,
+  CREATE_ROOM,
+  JOIN_ROOM,
   INIT_GAME,
   WAITING_FOR_OPPONENT,
   MATCHMAKING_CANCELLED,
@@ -13,6 +16,8 @@ import {
   ALREADY_IN_GAME,
   CANCEL_MATCHMAKING,
   ACTION_REJECTED,
+  ROOM_CREATED,
+  ROOM_JOIN_FAILED,
 } from "./Game";
 import {
   ArrowRight,
@@ -121,6 +126,18 @@ type FriendsListResponse = {
 
 type FetchState = "idle" | "loading" | "success" | "error";
 
+const ROOM_CODE_LENGTH = 6;
+const normalizeRoomCode = (value: string | null) => (value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+const getRoomJoinFailedMessage = (reason: string | undefined) => {
+  if (reason === "not_found") return "Room not found. Check the code and try again.";
+  if (reason === "host_offline") return "Host is offline. Ask them to create a new room.";
+  if (reason === "self_join") return "You cannot join your own room.";
+  if (reason === "host_unavailable") return "Host is no longer available for this room.";
+  if (reason === "creation_failed") return "Could not start room match. Please try again.";
+  return "Unable to join room right now.";
+};
+
 function DashboardPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -145,6 +162,35 @@ function DashboardPage() {
   const [matchmakingStatus, setMatchmakingStatus] = useState<string>("");
   const [matchmakingCancelRequested, setMatchmakingCancelRequested] = useState(false);
   const [showReconnectCta, setShowReconnectCta] = useState(false);
+  const [roomCodeInput, setRoomCodeInput] = useState("");
+  const [createdRoomCode, setCreatedRoomCode] = useState("");
+  const [roomActionPending, setRoomActionPending] = useState(false);
+  const [roomExpiresAtMs, setRoomExpiresAtMs] = useState<number | null>(null);
+  const [roomNowMs, setRoomNowMs] = useState(() => Date.now());
+  const [pendingAutoJoinRoomCode, setPendingAutoJoinRoomCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!roomActionPending) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setRoomActionPending(false);
+      setMatchmakingStatus((previous) =>
+        previous && previous !== "Connecting to server..."
+          ? previous
+          : "Room action timed out. Please try again."
+      );
+    }, 8000);
+
+    return () => window.clearTimeout(timer);
+  }, [roomActionPending]);
+
+  useEffect(() => {
+    if (!isMatchmakingModalOpen && !createdRoomCode) {
+      setMatchmakingStatus("");
+    }
+  }, [isMatchmakingModalOpen, createdRoomCode]);
 
   useEffect(() => {
     if (!socket) return;
@@ -165,6 +211,9 @@ function DashboardPage() {
             setIsMatchmakingModalOpen(false);
             setMatchmakingState("idle");
             setShowReconnectCta(false);
+            setCreatedRoomCode("");
+            setRoomActionPending(false);
+            setRoomExpiresAtMs(null);
             navigate("/game", { state: { initialGameData: message.payload } });
           }
           break;
@@ -173,21 +222,58 @@ function DashboardPage() {
           setMatchmakingStatus("Matchmaking cancelled.");
           setMatchmakingCancelRequested(false);
           setShowReconnectCta(false);
+          setRoomActionPending(false);
+          setRoomExpiresAtMs(null);
           break;
         case ALREADY_WAITING:
           setMatchmakingState("waiting");
           setMatchmakingStatus("Matchmaking already active.");
           setShowReconnectCta(false);
+          setRoomActionPending(false);
+          setRoomExpiresAtMs(null);
           break;
         case ALREADY_IN_GAME:
           setMatchmakingStatus("You are already in a game.");
           setMatchmakingState("idle");
           setShowReconnectCta(true);
+          setRoomActionPending(false);
+          setRoomExpiresAtMs(null);
           break;
         case ACTION_REJECTED:
-          setMatchmakingStatus(message.payload?.reason || "Action rejected.");
+          if (message.payload?.reason === "already_in_game") {
+            setMatchmakingStatus("You are already in a game.");
+          } else if (message.payload?.reason === "already_waiting") {
+            setMatchmakingStatus("Finish or cancel your current queue first.");
+          } else if (message.payload?.reason === "room_creation_failed") {
+            setMatchmakingStatus("Failed to create room game. Please try again.");
+          } else {
+            setMatchmakingStatus(message.payload?.reason || "Action rejected.");
+          }
           setMatchmakingCancelRequested(false);
           setShowReconnectCta(false);
+          setRoomActionPending(false);
+          setRoomExpiresAtMs(null);
+          break;
+        case ROOM_CREATED: {
+          const roomCode = normalizeRoomCode(typeof message.payload?.roomCode === "string" ? message.payload.roomCode : null);
+          if (!roomCode) {
+            setMatchmakingStatus("Failed to create room. Try again.");
+            setRoomActionPending(false);
+            break;
+          }
+          setCreatedRoomCode(roomCode);
+          const expiresAtMs = typeof message.payload?.expiresAtMs === "number" ? message.payload.expiresAtMs : Date.now() + 120000;
+          setRoomExpiresAtMs(expiresAtMs);
+          setMatchmakingStatus("Room ready. Share the code or link to invite opponent.");
+          setMatchmakingState("idle");
+          setIsMatchmakingModalOpen(true);
+          setRoomActionPending(false);
+          break;
+        }
+        case ROOM_JOIN_FAILED:
+          setMatchmakingStatus(getRoomJoinFailedMessage(message.payload?.reason));
+          setRoomActionPending(false);
+          setRoomExpiresAtMs(null);
           break;
       }
     };
@@ -204,6 +290,77 @@ function DashboardPage() {
     socket.send(JSON.stringify({ type: INIT_GAME }));
     setMatchmakingStatus("Requesting match...");
     setShowReconnectCta(false);
+    if (createdRoomCode && socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: CANCEL_ROOM }));
+    }
+    setCreatedRoomCode("");
+    setRoomActionPending(false);
+    setRoomExpiresAtMs(null);
+    setPendingAutoJoinRoomCode(null);
+  };
+
+  const handleCreateRoom = () => {
+    if (!socket || socket.readyState !== WebSocket.OPEN || roomActionPending) {
+      setMatchmakingStatus("Connecting to server...");
+      return;
+    }
+    if (createdRoomCode) {
+      socket.send(JSON.stringify({ type: CANCEL_ROOM }));
+    }
+    setCreatedRoomCode("");
+    setRoomExpiresAtMs(null);
+    setMatchmakingStatus("Creating private room...");
+    setMatchmakingState("idle");
+    setRoomActionPending(true);
+    setPendingAutoJoinRoomCode(null);
+    socket.send(JSON.stringify({ type: CREATE_ROOM }));
+  };
+
+  const handleJoinRoom = () => {
+    if (!socket || socket.readyState !== WebSocket.OPEN || roomActionPending) {
+      setMatchmakingStatus("Connecting to server...");
+      return;
+    }
+    if (createdRoomCode) {
+      socket.send(JSON.stringify({ type: CANCEL_ROOM }));
+    }
+    const normalizedCode = normalizeRoomCode(roomCodeInput).slice(0, ROOM_CODE_LENGTH);
+    if (normalizedCode.length !== ROOM_CODE_LENGTH) {
+      setMatchmakingStatus(`Enter a ${ROOM_CODE_LENGTH}-character room code.`);
+      return;
+    }
+    setCreatedRoomCode("");
+    setRoomExpiresAtMs(null);
+    setMatchmakingStatus("Joining private room...");
+    setMatchmakingState("idle");
+    setRoomActionPending(true);
+    setPendingAutoJoinRoomCode(null);
+    socket.send(JSON.stringify({
+      type: JOIN_ROOM,
+      payload: { roomCode: normalizedCode },
+    }));
+  };
+
+  const roomInviteLink = createdRoomCode ? `${window.location.origin}/game?room=${createdRoomCode}` : "";
+
+  const handleCopyRoomCode = async () => {
+    if (!createdRoomCode) return;
+    try {
+      await navigator.clipboard.writeText(createdRoomCode);
+      setMatchmakingStatus("Room code copied.");
+    } catch {
+      setMatchmakingStatus("Copy failed. Please copy manually.");
+    }
+  };
+
+  const handleCopyInviteLink = async () => {
+    if (!roomInviteLink) return;
+    try {
+      await navigator.clipboard.writeText(roomInviteLink);
+      setMatchmakingStatus("Invite link copied.");
+    } catch {
+      setMatchmakingStatus("Copy failed. Please copy manually.");
+    }
   };
 
   useEffect(() => {
@@ -211,10 +368,42 @@ function DashboardPage() {
       return;
     }
 
-    const routeState = location.state as { openMatchmaking?: boolean; reconnectExpired?: boolean };
+    const routeState = location.state as {
+      openMatchmaking?: boolean;
+      reconnectExpired?: boolean;
+      prefillRoomCode?: string;
+      autoJoinRoom?: boolean;
+    };
 
     if (routeState.openMatchmaking) {
       setIsMatchmakingModalOpen(true);
+      if (routeState.prefillRoomCode) {
+        setRoomCodeInput(normalizeRoomCode(routeState.prefillRoomCode).slice(0, ROOM_CODE_LENGTH));
+      }
+      navigate(location.pathname, { replace: true, state: {} });
+      return;
+    }
+
+    if (routeState.prefillRoomCode) {
+      const code = normalizeRoomCode(routeState.prefillRoomCode).slice(0, ROOM_CODE_LENGTH);
+      setRoomCodeInput(code);
+      setIsMatchmakingModalOpen(true);
+      if (routeState.autoJoinRoom && code.length === ROOM_CODE_LENGTH) {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          setCreatedRoomCode("");
+          setRoomExpiresAtMs(null);
+          setMatchmakingState("idle");
+          setMatchmakingStatus("Joining private room...");
+          setRoomActionPending(true);
+          socket.send(JSON.stringify({
+            type: JOIN_ROOM,
+            payload: { roomCode: code },
+          }));
+        } else {
+          setPendingAutoJoinRoomCode(code);
+          setMatchmakingStatus("Connecting to server...");
+        }
+      }
       navigate(location.pathname, { replace: true, state: {} });
       return;
     }
@@ -226,7 +415,64 @@ function DashboardPage() {
       setMatchmakingStatus("Reconnect window expired. Start a new match.");
       navigate(location.pathname, { replace: true, state: {} });
     }
-  }, [location.pathname, location.state, navigate]);
+  }, [location.pathname, location.state, navigate, socket]);
+
+  useEffect(() => {
+    if (!pendingAutoJoinRoomCode) {
+      return;
+    }
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    setCreatedRoomCode("");
+    setRoomExpiresAtMs(null);
+    setMatchmakingState("idle");
+    setMatchmakingStatus("Joining private room...");
+    setRoomActionPending(true);
+    socket.send(JSON.stringify({
+      type: JOIN_ROOM,
+      payload: { roomCode: pendingAutoJoinRoomCode },
+    }));
+    setPendingAutoJoinRoomCode(null);
+  }, [pendingAutoJoinRoomCode, socket]);
+
+  useEffect(() => {
+    if (!roomExpiresAtMs) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setRoomNowMs(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [roomExpiresAtMs]);
+
+  useEffect(() => {
+    if (!roomExpiresAtMs) {
+      return;
+    }
+    if (roomNowMs < roomExpiresAtMs) {
+      return;
+    }
+
+    setRoomExpiresAtMs(null);
+    setCreatedRoomCode("");
+    setRoomActionPending(false);
+    setMatchmakingStatus("Room expired. Create a new one.");
+  }, [roomNowMs, roomExpiresAtMs]);
+
+  const roomExpiresInLabel = (() => {
+    if (!roomExpiresAtMs || !createdRoomCode) {
+      return "";
+    }
+    const remainingMs = Math.max(0, roomExpiresAtMs - roomNowMs);
+    const totalSeconds = Math.ceil(remainingMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  })();
 
   const handleCancelMatchmaking = () => {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
@@ -701,11 +947,22 @@ function DashboardPage() {
       <MatchmakingModal
         isOpen={isMatchmakingModalOpen}
         onClose={() => {
+          if (createdRoomCode && socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: CANCEL_ROOM }));
+          }
           setIsMatchmakingModalOpen(false);
           setShowReconnectCta(false);
+          setRoomActionPending(false);
+          setRoomExpiresAtMs(null);
+          setCreatedRoomCode("");
         }}
         onStart={handleStartMatchmaking}
         onCancel={handleCancelMatchmaking}
+        onCreateRoom={handleCreateRoom}
+        onJoinRoom={handleJoinRoom}
+        onRoomCodeInputChange={(value) => setRoomCodeInput(normalizeRoomCode(value).slice(0, ROOM_CODE_LENGTH))}
+        onCopyRoomCode={handleCopyRoomCode}
+        onCopyInviteLink={handleCopyInviteLink}
         onReconnect={() => {
           setIsMatchmakingModalOpen(false);
           setShowReconnectCta(false);
@@ -715,6 +972,11 @@ function DashboardPage() {
         statusMessage={matchmakingStatus}
         cancelRequested={matchmakingCancelRequested}
         showReconnectAction={showReconnectCta}
+        roomCodeInput={roomCodeInput}
+        createdRoomCode={createdRoomCode}
+        roomActionPending={roomActionPending}
+        roomInviteLink={roomInviteLink}
+        roomExpiresInLabel={roomExpiresInLabel}
       />
 
       <SocialDrawer
