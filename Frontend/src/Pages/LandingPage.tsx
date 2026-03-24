@@ -57,7 +57,7 @@ function LandingPage() {
                 onClick={() => navigate("/")}
                 className="flex items-center gap-2 hover:opacity-80 transition-opacity"
               >
-                <span className="font-headline font-bold text-xl text-[#e9c176]">chess</span>
+                <span className="font-headline font-bold text-xl text-[#e9c176]">Chess</span>
               </button>
             </div>
             <div className="hidden md:flex items-center gap-6">
