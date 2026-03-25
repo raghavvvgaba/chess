@@ -19,7 +19,7 @@ function AuthPage() {
 
     useEffect(() => {
         if (session?.user?.id) {
-            navigate("/game", { replace: true });
+            navigate("/", { replace: true });
         }
     }, [navigate, session?.user?.id]);
 
@@ -45,7 +45,7 @@ function AuthPage() {
                     name,
                     email,
                     password,
-                    callbackURL: "/game"
+                    callbackURL: "/"
                 });
                 if (result.error) {
                     setErrorMessage(result.error.message ?? "Sign up failed.");
@@ -54,7 +54,7 @@ function AuthPage() {
                 const result = await authClient.signIn.email({
                     email,
                     password,
-                    callbackURL: "/game"
+                    callbackURL: "/"
                 });
                 if (result.error) {
                     setErrorMessage(result.error.message ?? "Sign in failed.");
@@ -72,7 +72,7 @@ function AuthPage() {
         try {
             await authClient.signIn.social({
                 provider: "google",
-                callbackURL: `${window.location.origin}/game`
+                callbackURL: `${window.location.origin}/`
             });
         } catch (error) {
             setErrorMessage(error instanceof Error ? error.message : "Google sign-in failed.");
