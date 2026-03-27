@@ -141,7 +141,7 @@ const getRoomJoinFailedMessage = (reason: string | undefined) => {
 function DashboardPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const socket = useSocket();
+  const { socket, connectionState } = useSocket();
   const { data: session } = authClient.useSession();
   const user = session?.user;
 
@@ -168,6 +168,7 @@ function DashboardPage() {
   const [roomExpiresAtMs, setRoomExpiresAtMs] = useState<number | null>(null);
   const [roomNowMs, setRoomNowMs] = useState(() => Date.now());
   const [pendingAutoJoinRoomCode, setPendingAutoJoinRoomCode] = useState<string | null>(null);
+  const isSocketOpen = !!socket && connectionState === "open" && socket.readyState === WebSocket.OPEN;
 
   useEffect(() => {
     if (!roomActionPending) {
@@ -283,14 +284,14 @@ function DashboardPage() {
   }, [socket, navigate]);
 
   const handleStartMatchmaking = () => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
+    if (!isSocketOpen || !socket) {
       setMatchmakingStatus("Connecting to server...");
       return;
     }
     socket.send(JSON.stringify({ type: INIT_GAME }));
     setMatchmakingStatus("Requesting match...");
     setShowReconnectCta(false);
-    if (createdRoomCode && socket && socket.readyState === WebSocket.OPEN) {
+    if (createdRoomCode && isSocketOpen && socket) {
       socket.send(JSON.stringify({ type: CANCEL_ROOM }));
     }
     setCreatedRoomCode("");
@@ -300,7 +301,7 @@ function DashboardPage() {
   };
 
   const handleCreateRoom = () => {
-    if (!socket || socket.readyState !== WebSocket.OPEN || roomActionPending) {
+    if (!isSocketOpen || !socket || roomActionPending) {
       setMatchmakingStatus("Connecting to server...");
       return;
     }
@@ -317,7 +318,7 @@ function DashboardPage() {
   };
 
   const handleJoinRoom = () => {
-    if (!socket || socket.readyState !== WebSocket.OPEN || roomActionPending) {
+    if (!isSocketOpen || !socket || roomActionPending) {
       setMatchmakingStatus("Connecting to server...");
       return;
     }
@@ -389,7 +390,7 @@ function DashboardPage() {
       setRoomCodeInput(code);
       setIsMatchmakingModalOpen(true);
       if (routeState.autoJoinRoom && code.length === ROOM_CODE_LENGTH) {
-        if (socket && socket.readyState === WebSocket.OPEN) {
+        if (isSocketOpen && socket) {
           setCreatedRoomCode("");
           setRoomExpiresAtMs(null);
           setMatchmakingState("idle");
@@ -415,13 +416,13 @@ function DashboardPage() {
       setMatchmakingStatus("Reconnect window expired. Start a new match.");
       navigate(location.pathname, { replace: true, state: {} });
     }
-  }, [location.pathname, location.state, navigate, socket]);
+  }, [isSocketOpen, location.pathname, location.state, navigate, socket]);
 
   useEffect(() => {
     if (!pendingAutoJoinRoomCode) {
       return;
     }
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
+    if (!isSocketOpen || !socket) {
       return;
     }
 
@@ -435,7 +436,7 @@ function DashboardPage() {
       payload: { roomCode: pendingAutoJoinRoomCode },
     }));
     setPendingAutoJoinRoomCode(null);
-  }, [pendingAutoJoinRoomCode, socket]);
+  }, [isSocketOpen, pendingAutoJoinRoomCode, socket]);
 
   useEffect(() => {
     if (!roomExpiresAtMs) {
@@ -475,7 +476,7 @@ function DashboardPage() {
   })();
 
   const handleCancelMatchmaking = () => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (!isSocketOpen || !socket) return;
     setMatchmakingCancelRequested(true);
     socket.send(JSON.stringify({ type: CANCEL_MATCHMAKING }));
   };
@@ -947,7 +948,7 @@ function DashboardPage() {
       <MatchmakingModal
         isOpen={isMatchmakingModalOpen}
         onClose={() => {
-          if (createdRoomCode && socket && socket.readyState === WebSocket.OPEN) {
+          if (createdRoomCode && isSocketOpen && socket) {
             socket.send(JSON.stringify({ type: CANCEL_ROOM }));
           }
           setIsMatchmakingModalOpen(false);

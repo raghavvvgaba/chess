@@ -153,7 +153,7 @@ function Game() {
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
-    const socket = useSocket();
+    const { socket, connectionState, connectionVersion } = useSocket();
     const roomCode = normalizeRoomCode(searchParams.get("room"));
     const initialGameData = (location.state as { initialGameData?: unknown } | null)?.initialGameData;
     const chessRef = useRef(new Chess());
@@ -179,11 +179,16 @@ function Game() {
     const reconnectRequestSentRef = useRef(false);
     const reconnectRedirectTimerRef = useRef<number | null>(null);
     const reconnectRequestSocketRef = useRef<WebSocket | null>(null);
+    const reconnectRequestConnectionVersionRef = useRef(0);
     const leaveGameViewSentRef = useRef(false);
     const latestGameStateRef = useRef<GameState>("idle");
     const latestSocketRef = useRef<WebSocket | null>(null);
+    const attachedSocketRef = useRef<WebSocket | null>(null);
+    const attachedConnectionVersionRef = useRef(0);
 
     const initializeGameFromPayload = (payload: any) => {
+        attachedSocketRef.current = socket;
+        attachedConnectionVersionRef.current = connectionVersion;
         chessRef.current = new Chess();
         if (typeof payload?.fen === "string") {
             try {
@@ -242,34 +247,6 @@ function Game() {
             },
         });
     }, [roomCode, navigate]);
-
-    useEffect(() => {
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
-            return;
-        }
-        if (roomCode) {
-            return;
-        }
-        if (initialGameData) {
-            return;
-        }
-        if (reconnectRequestSocketRef.current !== socket) {
-            reconnectRequestSocketRef.current = socket;
-            reconnectRequestSentRef.current = false;
-        }
-        if (gameState === "in_game") {
-            return;
-        }
-        if (reconnectRequestSentRef.current) {
-            return;
-        }
-
-        reconnectRequestSentRef.current = true;
-        setStatusMessage("Reconnecting to active match...");
-        socket.send(JSON.stringify({
-            type: RECONNECT_GAME
-        }));
-    }, [socket, gameState, initialGameData, roomCode]);
 
     useEffect(() => {
         latestGameStateRef.current = gameState;
@@ -388,7 +365,7 @@ function Game() {
             return "Action rejected by server.";
         };
 
-        socket.onmessage = (event) => {
+        const handleMessage = (event: MessageEvent) => {
             const message = JSON.parse(event.data);
             console.log(message);
 
@@ -636,10 +613,59 @@ function Game() {
             }
         };
 
+        socket.addEventListener("message", handleMessage);
+
         return () => {
-            socket.onmessage = null;
+            socket.removeEventListener("message", handleMessage);
         };
-    }, [socket, navigate, playerColor, gameState]);
+    }, [socket, navigate, playerColor, gameState, connectionVersion]);
+
+    useEffect(() => {
+        if (!socket) {
+            reconnectRequestSocketRef.current = null;
+            reconnectRequestConnectionVersionRef.current = 0;
+            reconnectRequestSentRef.current = false;
+            return;
+        }
+
+        if (
+            reconnectRequestSocketRef.current !== socket ||
+            reconnectRequestConnectionVersionRef.current !== connectionVersion
+        ) {
+            reconnectRequestSocketRef.current = socket;
+            reconnectRequestConnectionVersionRef.current = connectionVersion;
+            reconnectRequestSentRef.current = false;
+        }
+    }, [socket, connectionVersion]);
+
+    useEffect(() => {
+        if (!socket || connectionState !== "open" || socket.readyState !== WebSocket.OPEN) {
+            return;
+        }
+        if (roomCode) {
+            return;
+        }
+        if (initialGameData) {
+            return;
+        }
+
+        const isCurrentConnectionAttached =
+            attachedSocketRef.current === socket &&
+            attachedConnectionVersionRef.current === connectionVersion;
+
+        if (gameState === "in_game" && isCurrentConnectionAttached) {
+            return;
+        }
+        if (reconnectRequestSentRef.current) {
+            return;
+        }
+
+        reconnectRequestSentRef.current = true;
+        setStatusMessage("Reconnecting to active match...");
+        socket.send(JSON.stringify({
+            type: RECONNECT_GAME
+        }));
+    }, [socket, connectionState, connectionVersion, gameState, initialGameData, roomCode]);
 
     useEffect(() => {
         const scrollToBottom = (element: HTMLDivElement | null) => {
@@ -872,7 +898,7 @@ function Game() {
     };
 
     const handleMoveRequest = (move: { from: Square; to: Square; promotion?: PromotionPiece }) => {
-        if (socket.readyState !== WebSocket.OPEN) {
+        if (!socket || connectionState !== "open" || socket.readyState !== WebSocket.OPEN) {
             setStatusMessage("Connection issue. Try again.");
             return;
         }
@@ -933,7 +959,7 @@ function Game() {
         if (!matchConclusion.isOpen || isRematchButtonDisabled) {
             return;
         }
-        if (socket.readyState === WebSocket.OPEN) {
+        if (socket && connectionState === "open" && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({
                 type: REMATCH_REQUEST
             }));
@@ -953,7 +979,7 @@ function Game() {
     };
 
     const handleConfirmQuit = () => {
-        if (socket.readyState !== WebSocket.OPEN) {
+        if (!socket || connectionState !== "open" || socket.readyState !== WebSocket.OPEN) {
             setStatusMessage("Connection issue. Try again.");
             setQuitDialogOpen(false);
             return;
@@ -974,7 +1000,7 @@ function Game() {
 
     const handleGoHome = () => {
         setPendingPromotion(DEFAULT_PENDING_PROMOTION);
-        if (socket && socket.readyState === WebSocket.OPEN && !leaveGameViewSentRef.current) {
+        if (socket && connectionState === "open" && socket.readyState === WebSocket.OPEN && !leaveGameViewSentRef.current) {
             leaveGameViewSentRef.current = true;
             try {
                 socket.send(JSON.stringify({

@@ -23,6 +23,7 @@ import { getUserProfileById } from "./userStore.js";
 
 const port = Number(process.env.PORT ?? 8080);
 const frontendOrigin = process.env.FRONTEND_ORIGIN ?? "http://localhost:5173";
+const wsHeartbeatIntervalMs = Number(process.env.WS_HEARTBEAT_INTERVAL_MS ?? 15_000);
 const gameManager = new GameManager();
 
 function rejectUpgrade(socket: Duplex, statusLine: string) {
@@ -253,11 +254,28 @@ async function bootstrap() {
 
     wss.on("connection", (socket) => {
         const authedSocket = socket as AuthenticatedSocket;
+        authedSocket.isAlive = true;
+        authedSocket.on("pong", () => {
+            authedSocket.isAlive = true;
+        });
         gameManager.addUser(authedSocket);
         authedSocket.on("close", () => {
             gameManager.removeUser(authedSocket);
         });
     });
+
+    const heartbeatTimer = setInterval(() => {
+        for (const socket of wss.clients) {
+            const authedSocket = socket as AuthenticatedSocket;
+            if (!authedSocket.isAlive) {
+                authedSocket.terminate();
+                continue;
+            }
+            authedSocket.isAlive = false;
+            authedSocket.ping();
+        }
+    }, wsHeartbeatIntervalMs);
+    heartbeatTimer.unref();
 
     server.on("upgrade", async (request, socket, head) => {
         try {
@@ -281,6 +299,7 @@ async function bootstrap() {
                 const authedSocket = ws as AuthenticatedSocket;
                 const preferredName = typeof session.user.name === "string" ? session.user.name.trim() : "";
                 const fallbackName = typeof session.user.email === "string" ? session.user.email.trim().split("@")[0] : "";
+                authedSocket.isAlive = true;
                 authedSocket.userId = session.user.id;
                 authedSocket.userName = preferredName || fallbackName || "";
                 wss.emit("connection", authedSocket, request);
@@ -297,6 +316,7 @@ async function bootstrap() {
 
     const shutdown = async () => {
         flusher.stop();
+        clearInterval(heartbeatTimer);
         await closeRedisConnection();
         server.close();
     };

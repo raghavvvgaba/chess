@@ -1,11 +1,23 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 
-type SocketContextType = WebSocket | null;
+export type SocketConnectionState = "connecting" | "open" | "closed";
 
-const SocketContext = createContext<SocketContextType>(null);
+export type SocketSession = {
+    socket: WebSocket | null;
+    connectionState: SocketConnectionState;
+    connectionVersion: number;
+};
+
+const SocketContext = createContext<SocketSession>({
+    socket: null,
+    connectionState: "closed",
+    connectionVersion: 0
+});
 
 export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [socket, setSocket] = useState<WebSocket | null>(null);
+    const [connectionState, setConnectionState] = useState<SocketConnectionState>("connecting");
+    const [connectionVersion, setConnectionVersion] = useState(0);
     const WS_URL = import.meta.env.VITE_WS_URL ?? "ws://localhost:8080/ws";
     const socketRef = useRef<WebSocket | null>(null);
     const reconnectTimerRef = useRef<number | null>(null);
@@ -41,6 +53,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 return;
             }
             console.log("Connecting to WebSocket...");
+            setConnectionState("connecting");
             const ws = new WebSocket(WS_URL);
             socketRef.current = ws;
             setSocket(ws);
@@ -53,7 +66,8 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 console.log("WebSocket connected");
                 reconnectAttemptRef.current = 0;
                 clearReconnectTimer();
-                setSocket(ws);
+                setConnectionState("open");
+                setConnectionVersion((previous) => previous + 1);
             };
 
             ws.onerror = () => {
@@ -65,6 +79,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 if (socketRef.current === ws) {
                     socketRef.current = null;
                 }
+                setConnectionState("closed");
                 setSocket((previous) => (previous === ws ? null : previous));
                 scheduleReconnect();
             };
@@ -75,6 +90,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return () => {
             isActive = false;
             clearReconnectTimer();
+            setConnectionState("closed");
             setSocket(null);
             if (socketRef.current) {
                 socketRef.current.close();
@@ -84,7 +100,11 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, [WS_URL]);
 
     return (
-        <SocketContext.Provider value={socket}>
+        <SocketContext.Provider value={{
+            socket,
+            connectionState,
+            connectionVersion
+        }}>
             {children}
         </SocketContext.Provider>
     );

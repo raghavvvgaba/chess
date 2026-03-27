@@ -257,6 +257,23 @@ export async function getActiveRuntimeGameIds() {
     return redis.smembers(ACTIVE_GAMES_KEY);
 }
 
+export async function getActiveRuntimeGameSnapshotForUserId(userId: string): Promise<RuntimeGameSnapshot | null> {
+    const activeGameIds = await getActiveRuntimeGameIds();
+
+    for (const gameId of activeGameIds) {
+        const snapshot = await getRuntimeGameSnapshot(gameId);
+        if (!snapshot || snapshot.status !== "active") {
+            continue;
+        }
+
+        if (snapshot.whiteUserId === userId || snapshot.blackUserId === userId) {
+            return snapshot;
+        }
+    }
+
+    return null;
+}
+
 export async function getQueuedFlushGameIds(limit = 25) {
     const redis = getRedisClient();
     return redis.zrangebyscore(FLUSH_QUEUE_KEY, "-inf", Date.now(), "LIMIT", 0, limit);

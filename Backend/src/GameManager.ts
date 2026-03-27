@@ -1,7 +1,7 @@
 import { ALREADY_IN_GAME, ALREADY_WAITING, ACTION_REJECTED, CANCEL_MATCHMAKING, CANCEL_ROOM, CREATE_ROOM, INIT_GAME, INVALID_MESSAGE, JOIN_ROOM, LEAVE_GAME_VIEW, MATCHMAKING_CANCELLED, MOVE, QUIT_GAME, RECONNECT_GAME, REMATCH_REQUEST, ROOM_CREATED, ROOM_JOIN_FAILED, WAITING_FOR_OPPONENT } from "./messages.js";
 import { Game } from "./Game.js";
 import { createGame, isRoomCodeTaken } from "./gameStore.js";
-import { getActiveRuntimeGameIds, getRuntimeGameSnapshot } from "./runtimeGameStore.js";
+import { getActiveRuntimeGameIds, getActiveRuntimeGameSnapshotForUserId, getRuntimeGameSnapshot } from "./runtimeGameStore.js";
 import type { AuthenticatedSocket } from "./socketTypes.js";
 
 type ClientInitGameMessage = { type: typeof INIT_GAME };
@@ -69,6 +69,7 @@ const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const ROOM_CODE_LENGTH = 6;
 const ROOM_TTL_MS = 120_000;
 const ROOM_SWEEP_INTERVAL_MS = 5_000;
+const OPEN_SOCKET_STATE = 1;
 
 function normalizeRoomCode(value: string) {
     return value.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -540,7 +541,7 @@ export class GameManager {
             }
 
             if (message.type === RECONNECT_GAME) {
-                const game = this.getGameForUserId(socket.userId);
+                const game = await this.getOrRecoverGameForUser(socket);
                 if (!game) {
                     this.sendActionRejected(socket, "not_in_game");
                     return;
@@ -861,5 +862,61 @@ export class GameManager {
             return false;
         }
         return (error as { code?: string }).code === "23505";
+    }
+
+    private async getOrRecoverGameForUser(socket: AuthenticatedSocket) {
+        const activeGame = this.getActiveGameForUserId(socket.userId);
+        if (activeGame) {
+            return activeGame;
+        }
+
+        const snapshot = await getActiveRuntimeGameSnapshotForUserId(socket.userId);
+        if (!snapshot) {
+            return null;
+        }
+
+        const existingGame = this.games.find((game) => game.getGameId() === snapshot.gameId);
+        if (existingGame) {
+            this.registerGame(existingGame, snapshot.whiteUserId, snapshot.blackUserId);
+            return existingGame;
+        }
+
+        this.cleanupConcludedGameForUser(snapshot.whiteUserId);
+        this.cleanupConcludedGameForUser(snapshot.blackUserId);
+
+        const whitePlayer = snapshot.whiteUserId === socket.userId
+            ? socket
+            : this.users.find((candidate) => candidate.userId === snapshot.whiteUserId) ?? this.createDetachedSocket(snapshot.whiteUserId, snapshot.whiteUserName);
+        const blackPlayer = snapshot.blackUserId === socket.userId
+            ? socket
+            : this.users.find((candidate) => candidate.userId === snapshot.blackUserId) ?? this.createDetachedSocket(snapshot.blackUserId, snapshot.blackUserName);
+
+        const recoveredGame = Game.fromRuntimeSnapshot(snapshot, {
+            whitePlayer,
+            blackPlayer
+        }, async (currentGame) => this.startRematch(currentGame), (currentGame) => this.handleDisconnectTimeout(currentGame));
+        this.games.push(recoveredGame);
+        this.registerGame(recoveredGame, snapshot.whiteUserId, snapshot.blackUserId);
+
+        if (whitePlayer.readyState !== OPEN_SOCKET_STATE) {
+            recoveredGame.markPlayerAway(snapshot.whiteUserId);
+        }
+        if (blackPlayer.readyState !== OPEN_SOCKET_STATE) {
+            recoveredGame.markPlayerAway(snapshot.blackUserId);
+        }
+
+        return recoveredGame;
+    }
+
+    private createDetachedSocket(userId: string, userName: string) {
+        return {
+            readyState: 3,
+            userId,
+            userName,
+            isAlive: false,
+            send() {
+                return undefined;
+            }
+        } as unknown as AuthenticatedSocket;
     }
 }
