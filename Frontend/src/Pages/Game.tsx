@@ -1,12 +1,30 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Chess, type Square } from "chess.js";
 import { useNavigate, useSearchParams, useLocation } from "react-router";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import ChessBoard from "../components/ChessBoard";
 import MatchConclusionModal from "../components/game/MatchConclusionModal";
 import PromotionModal from "../components/game/PromotionModal";
 import useSocket from "../hooks/useSocket";
 import LoadingState from "../components/LoadingState";
+import AppSidebar from "../components/dashboard/AppSidebar";
+import { 
+  History, 
+  Swords, 
+  Flag,
+  RotateCcw,
+  Cpu,
+  User,
+  LogOut,
+  ChevronRight,
+  ChevronLeft,
+  Zap,
+  Play,
+  Clock,
+  Target,
+  Dices,
+  Shield
+} from "lucide-react";
 
 export const INIT_GAME = "init_game";
 export const MOVE = "move";
@@ -175,7 +193,6 @@ function Game() {
     const [quitDialogOpen, setQuitDialogOpen] = useState(false);
     const [connectionNowMs, setConnectionNowMs] = useState(() => Date.now());
     const desktopHistoryRef = useRef<HTMLDivElement | null>(null);
-    const mobileHistoryRef = useRef<HTMLDivElement | null>(null);
     const reconnectRequestSentRef = useRef(false);
     const reconnectRedirectTimerRef = useRef<number | null>(null);
     const reconnectRequestSocketRef = useRef<WebSocket | null>(null);
@@ -376,15 +393,12 @@ function Game() {
                     }
                     break;
                 case WAITING_FOR_OPPONENT:
-                    // If we're on the Game page and it says waiting, we should probably redirect home
-                    // so the user can use the dashboard matchmaking modal.
                     navigate("/", { replace: true });
                     break;
                 case ALREADY_WAITING:
                     navigate("/", { replace: true });
                     break;
                 case ALREADY_IN_GAME:
-                    // Handled by the server sending INIT_GAME payload automatically for reattaches
                     break;
                 case MATCHMAKING_CANCELLED:
                     setGameState("idle");
@@ -675,7 +689,6 @@ function Game() {
             element.scrollTop = element.scrollHeight;
         };
         scrollToBottom(desktopHistoryRef.current);
-        scrollToBottom(mobileHistoryRef.current);
     }, [moveHistory]);
 
     useEffect(() => {
@@ -729,18 +742,6 @@ function Game() {
         };
     }, [opponentConnectionState.isReconnected]);
 
-    if (roomCode) {
-        return <LoadingState message="Opening room..." subtitle="Redirecting to dashboard" />;
-    }
-
-    if (!socket) {
-        return <div>Connecting...</div>;
-    }
-
-    if (gameState !== "in_game") {
-        return <LoadingState message="Connecting..." subtitle={statusMessage || "Setting up the board"} />;
-    }
-
     const getConclusionTitle = () => {
         if (matchConclusion.reason === "resigned") {
             return "Resignation";
@@ -788,113 +789,16 @@ function Game() {
         return "Rematch";
     };
 
-    const isRematchButtonDisabled = matchConclusion.rematchState === "requested";
-    const latestPly = moveHistory.length ? moveHistory[moveHistory.length - 1].ply : null;
-
-    const getMoveHistoryRows = (): MoveHistoryRow[] => {
-        const rowMap = new Map<number, MoveHistoryRow>();
-        for (const entry of moveHistory) {
-            const existing = rowMap.get(entry.moveNumber) ?? { moveNumber: entry.moveNumber };
-            if (entry.color === "white") {
-                existing.white = entry;
-            } else {
-                existing.black = entry;
-            }
-            rowMap.set(entry.moveNumber, existing);
+    const getOpponentSubtitle = () => {
+        if (opponentConnectionState.isReconnecting) {
+            const deadline = opponentConnectionState.reconnectDeadlineMs ?? connectionNowMs;
+            const secondsRemaining = Math.max(0, Math.ceil((deadline - connectionNowMs) / 1000));
+            return `Reconnecting... (${secondsRemaining}s)`;
         }
-        return Array.from(rowMap.values()).sort((a, b) => a.moveNumber - b.moveNumber);
-    };
-
-    const renderMoveHistoryTable = (
-        scrollRef: { current: HTMLDivElement | null },
-        maxHeightClass = "max-h-80"
-    ) => {
-        const rows = getMoveHistoryRows();
-        if (rows.length === 0) {
-            return (
-                <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-20 py-12">
-                    <div className="relative">
-                        <svg viewBox="0 0 24 24" className="w-12 h-12 fill-none stroke-[#e9c176] stroke-1" aria-hidden="true">
-                            <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <div className="absolute inset-0 blur-xl bg-[#e9c176]/10" />
-                    </div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">No moves recorded</p>
-                </div>
-            );
+        if (opponentConnectionState.isReconnected) {
+            return "Reconnected";
         }
-        return (
-            <div ref={scrollRef} className={`${maxHeightClass} overflow-y-auto custom-scrollbar pr-1`}>
-                <div className="space-y-1">
-                    {/* Header Labels */}
-                    <div className="grid grid-cols-[36px_1fr_1fr] text-[9px] font-black uppercase tracking-[0.15em] text-[#444748] mb-2 px-1">
-                        <div className="text-center">#</div>
-                        <div className="text-center">White</div>
-                        <div className="text-center">Black</div>
-                    </div>
-
-                    {rows.map((row) => (
-                        <div
-                            key={row.moveNumber}
-                            className="grid grid-cols-[44px_1fr_1fr] items-stretch group border-b border-white/[0.02] last:border-0"
-                        >
-                            {/* Move Number Column - Ticker Style */}
-                            <div className="flex items-center justify-center py-2.5 border-r border-white/[0.05] bg-black/20">
-                                <span className="font-mono text-[9px] font-black text-[#3f3f46] group-hover:text-[#e9c176]/40 transition-colors">
-                                    {row.moveNumber.toString().padStart(2, '0')}
-                                </span>
-                            </div>
-
-                            {/* White Move */}
-                            <div className="relative px-1 py-1 flex items-center justify-center">
-                                {row.white && (
-                                    <div className="relative w-full h-full flex items-center justify-center">
-                                        {row.white.ply === latestPly && (
-                                            <motion.div 
-                                                layoutId="online-active-pill"
-                                                className="absolute inset-0 z-0 bg-[#e9c176]/10 border border-[#e9c176]/20 rounded-lg shadow-[0_0_15px_rgba(233,193,118,0.05)]"
-                                                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                                            />
-                                        )}
-                                        <span className={`relative z-10 text-[13px] font-bold tracking-tight transition-colors duration-300 ${
-                                            row.white.ply === latestPly 
-                                                ? "text-[#e9c176]" 
-                                                : "text-[#fff6e9]/80 group-hover:text-[#fff6e9]"
-                                        }`}>
-                                            {row.white.san}
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Black Move */}
-                            <div className="relative px-1 py-1 flex items-center justify-center border-l border-white/[0.05]">
-                                {row.black ? (
-                                    <div className="relative w-full h-full flex items-center justify-center">
-                                        {row.black.ply === latestPly && (
-                                            <motion.div 
-                                                layoutId="online-active-pill"
-                                                className="absolute inset-0 z-0 bg-[#e9c176]/10 border border-[#e9c176]/20 rounded-lg shadow-[0_0_15px_rgba(233,193,118,0.05)]"
-                                                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                                            />
-                                        )}
-                                        <span className={`relative z-10 text-[13px] font-bold tracking-tight transition-colors duration-300 ${
-                                            row.black.ply === latestPly 
-                                                ? "text-[#e9c176]" 
-                                                : "text-[#94a3b8]/80 group-hover:text-[#cbd5e1]"
-                                        }`}>
-                                            {row.black.san}
-                                        </span>
-                                    </div>
-                                ) : (
-                                    <div className="w-4 h-0.5 bg-white/5 rounded-full" />
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
+        return playerColor === "white" ? "Playing as black" : "Playing as white";
     };
 
     const handleMoveRequest = (move: { from: Square; to: Square; promotion?: PromotionPiece }) => {
@@ -1013,162 +917,224 @@ function Game() {
         navigate("/", { replace: true });
     };
 
+    const isRematchButtonDisabled = matchConclusion.rematchState === "requested";
+    const latestPly = moveHistory.length ? moveHistory[moveHistory.length - 1].ply : null;
+
+    const getMoveHistoryRows = useMemo(() => {
+        const rowMap = new Map<number, MoveHistoryRow>();
+        for (const entry of moveHistory) {
+            const existing = rowMap.get(entry.moveNumber) ?? { moveNumber: entry.moveNumber };
+            if (entry.color === "white") {
+                existing.white = entry;
+            } else {
+                existing.black = entry;
+            }
+            rowMap.set(entry.moveNumber, existing);
+        }
+        return Array.from(rowMap.values()).sort((a, b) => a.moveNumber - b.moveNumber);
+    }, [moveHistory]);
+
+    if (roomCode) {
+        return <LoadingState message="Opening room..." subtitle="Redirecting to dashboard" />;
+    }
+
+    if (!socket) {
+        return <div>Connecting...</div>;
+    }
+
     if (gameState !== "in_game") {
         return <LoadingState message="Connecting..." subtitle={statusMessage || "Setting up the board"} />;
     }
 
-    const getOpponentSubtitle = () => {
-        if (opponentConnectionState.isReconnecting) {
-            const deadline = opponentConnectionState.reconnectDeadlineMs ?? connectionNowMs;
-            const secondsRemaining = Math.max(0, Math.ceil((deadline - connectionNowMs) / 1000));
-            return `Reconnecting... (${secondsRemaining}s)`;
-        }
-        if (opponentConnectionState.isReconnected) {
-            return "Reconnected";
-        }
-        return playerColor === "white" ? "Black" : "White";
-    };
-
-    const getOpponentStatusIndicator = () => {
-        if (opponentConnectionState.isReconnecting) {
-            return <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-amber-500 animate-pulse" />;
-        }
-        if (opponentConnectionState.isReconnected) {
-            return <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-green-500" />;
-        }
-        return currentTurn === (playerColor === "white" ? "b" : "w") ? (
-            <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-green-500 animate-pulse" />
-        ) : null;
-    };
+    const isOpponentTurn = currentTurn === (playerColor === "white" ? "b" : "w");
+    const isMyTurn = currentTurn === (playerColor === "white" ? "w" : "b");
 
     return (
-        <main className="h-dvh bg-[#262522] flex flex-col relative overflow-y-auto lg:overflow-hidden pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-            <div className="w-full flex-1 flex flex-col lg:flex-row gap-2 lg:gap-4 p-2 lg:p-4 min-h-0">
-                <section className="flex-1 flex items-start lg:items-center justify-center min-h-0">
-                    <div className="w-full max-w-[calc(100dvh-11rem)] sm:max-w-[calc(100dvh-12rem)] lg:max-w-[calc(100dvh-10rem)] flex flex-col gap-1.5 sm:gap-2">
-                    <div className="w-full flex justify-end lg:hidden">
-                        <button
-                            onClick={handleQuitGame}
-                            disabled={quitRequested || matchConclusion.isOpen}
-                            className={`inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors ${quitRequested || matchConclusion.isOpen ? "border-[#5b5042] bg-[#40372c] text-[#d5cab8] cursor-not-allowed" : "border-[#8f4a4a] bg-[#5a3030] text-[#f8dedd] hover:bg-[#6a3737]"}`}
-                            aria-label="Quit match"
-                            title="Quit match"
-                        >
-                            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current stroke-2" aria-hidden="true">
-                                <path d="M14 7l5 5-5 5" />
-                                <path d="M19 12H9" />
-                                <path d="M11 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h6" />
-                            </svg>
-                        </button>
-                    </div>
-                    {/* Opponent info - above the board */}
-                    <div className="w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-1.5 sm:py-2 bg-[#3a3936] rounded-lg shrink-0">
-                        <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center shrink-0 ${playerColor === "white" ? "bg-[#262522] border-2 border-gray-500" : "bg-white"}`}>
-                            {playerColor === "white" ? (
-                                <span className="text-white text-xs sm:text-sm font-bold">♔</span>
-                            ) : (
-                                <span className="text-black text-xs sm:text-sm font-bold">♔</span>
-                            )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-white text-sm sm:text-base font-semibold truncate">{opponentPlayerName}</p>
-                            <p className={`text-xs truncate ${opponentConnectionState.isReconnecting ? "text-amber-400" : opponentConnectionState.isReconnected ? "text-green-400" : "text-gray-400"}`}>{getOpponentSubtitle()}</p>
-                        </div>
-                        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                            {getOpponentStatusIndicator()}
-                        </div>
-                    </div>
+        <div className="min-h-screen bot-page flex flex-col md:flex-row text-[#e5e2e3]">
+            <AppSidebar />
+            <div className="bot-page__mesh" aria-hidden />
 
-                    {/* Chess Board */}
-                    <div className="w-full shrink-0">
-                        <ChessBoard
-                            board={board}
-                            isInteractive={gameState === "in_game" && !matchConclusion.isOpen && !pendingPromotion.isOpen}
-                            playerColor={playerColor}
-                            currentTurn={currentTurn}
-                            orientation={playerColor === "black" ? "black" : "white"}
-                            setStatusMessage={setStatusMessage}
-                            fen={currentFen}
-                            lastMove={lastMove}
-                            checkedKingSquare={checkedKingSquare}
-                            onMoveRequest={handleMoveRequest}
-                            onPromotionRequired={handlePromotionRequired}
-                        />
-                    </div>
+            <main className="flex-1 relative z-10 h-screen overflow-y-auto px-3 pt-16 pb-4 sm:px-4 md:px-8 md:py-6 lg:px-12 lg:py-8 xl:overflow-hidden flex flex-col">
+                <div className="max-w-7xl mx-auto w-full xl:flex-1 flex flex-col xl:min-h-0">
+                    <div className="xl:flex-1 xl:min-h-0 grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-6 xl:gap-8 items-start xl:items-stretch py-2 animate-in fade-in duration-500">
+                        {/* Floating Game Action Controls - Top Right */}
+                        <div className="fixed sm:absolute top-4 right-4 sm:top-0 sm:right-0 z-[40]">
+                            <div className="glass-obsidian border border-white/10 rounded-2xl p-1.5 flex items-center gap-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl">
+                                <button
+                                    onClick={handleQuitGame}
+                                    disabled={quitRequested || matchConclusion.isOpen}
+                                    className={`inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border transition-all hover:scale-105 active:scale-95 ${
+                                        quitRequested || matchConclusion.isOpen
+                                            ? "border-[#5b5042]/50 bg-[#40372c]/80 text-[#d5cab8] cursor-not-allowed opacity-50"
+                                            : "border-[#8f4a4a]/50 bg-[#5a3030]/80 text-[#f8dedd] hover:bg-[#6a3737]"
+                                    }`}
+                                    aria-label="Quit match"
+                                    title="Quit match"
+                                >
+                                    <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                                </button>
+                            </div>
+                        </div>
 
-                    {/* Current player info - below the board */}
-                    <div className="w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-1.5 sm:py-2 bg-[#3a3936] rounded-lg shrink-0">
-                        <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center shrink-0 ${playerColor === "black" ? "bg-[#262522] border-2 border-gray-500" : "bg-white"}`}>
-                            {playerColor === "black" ? (
-                                <span className="text-white text-xs sm:text-sm font-bold">♔</span>
-                            ) : (
-                                <span className="text-black text-xs sm:text-sm font-bold">♔</span>
-                            )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-white text-sm sm:text-base font-semibold truncate">{myPlayerName}</p>
-                            <p className="text-gray-400 text-xs truncate">{playerColor === "black" ? "Black" : "White"}</p>
-                        </div>
-                        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                            {currentTurn === (playerColor === "white" ? "w" : "b") && (
-                                <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-green-500 animate-pulse" />
-                            )}
-                        </div>
-                    </div>
-                    </div>
-                </section>
+                        {/* Left Column: Board */}
+                        <div className="xl:col-span-8 w-full max-w-2xl xl:max-w-none mx-auto flex flex-col gap-3 sm:gap-4 xl:min-h-0">
+                            {/* Opponent Profile Card */}
+                            <div className="glass-obsidian border border-white/5 rounded-xl p-2 flex items-center justify-between gap-2 shrink-0">
+                                <div className="flex min-w-0 items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center shrink-0 border border-white/10">
+                                        <User className={`w-4 h-4 ${playerColor === "white" ? "text-gray-400" : "text-white"}`} />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="font-bold text-sm truncate">{opponentPlayerName}</p>
+                                        <p className={`text-[9px] ${opponentConnectionState.isReconnecting ? "text-amber-400" : opponentConnectionState.isReconnected ? "text-green-400" : "text-[#8e9192]"}`}>
+                                            {getOpponentSubtitle()}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className={`flex items-center gap-2 px-2 py-0.5 rounded-full border ${isOpponentTurn ? 'bg-[#e9c176]/10 border-[#e9c176]/20 text-[#e9c176]' : 'bg-white/5 border-white/10 text-[#8e9192]'}`}>
+                                    <div className={`w-1.5 h-1.5 rounded-full ${isOpponentTurn ? 'bg-[#e9c176] animate-pulse' : 'bg-slate-600'}`} />
+                                    <span className="text-[8px] font-bold uppercase tracking-[0.18em] whitespace-nowrap">{isOpponentTurn ? 'Their Turn' : 'Waiting'}</span>
+                                </div>
+                            </div>
 
-                <div className="lg:hidden w-full max-w-[calc(100dvh-11rem)] sm:max-w-[calc(100dvh-12rem)] mx-auto flex flex-col gap-2">
-                    {statusMessage && (
-                        <div className="rounded-xl border border-[#45433f] bg-[#2f2e2b] text-gray-200 px-4 py-3 text-sm">
-                            {statusMessage}
+                            {/* Board Container */}
+                            <div className="flex-none xl:flex-1 xl:min-h-0 flex items-center justify-center">
+                                <div className="w-full aspect-square max-w-[min(100%,calc(100svh-12rem))] sm:max-w-[min(100%,calc(100svh-24rem))] md:max-w-[min(100%,calc(100svh-22rem))] xl:max-w-[min(100%,calc(100svh-18rem))] glass-obsidian border border-white/10 p-1 sm:p-1.5 md:p-2 rounded-2xl shadow-2xl relative">
+                                    <div className="absolute inset-0 bg-gradient-to-br from-[#e9c176]/5 to-transparent pointer-events-none rounded-2xl" />
+                                    <ChessBoard
+                                        board={board}
+                                        isInteractive={gameState === "in_game" && !matchConclusion.isOpen && !pendingPromotion.isOpen}
+                                        playerColor={playerColor}
+                                        currentTurn={currentTurn}
+                                        orientation={playerColor === "black" ? "black" : "white"}
+                                        setStatusMessage={setStatusMessage}
+                                        fen={currentFen}
+                                        lastMove={lastMove}
+                                        checkedKingSquare={checkedKingSquare}
+                                        onMoveRequest={handleMoveRequest}
+                                        onPromotionRequired={handlePromotionRequired}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Player Profile Card */}
+                            <div className="glass-obsidian border border-white/5 rounded-xl p-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                                <div className="flex min-w-0 items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-lg bg-gradient-gold flex items-center justify-center shrink-0">
+                                        <span className="text-[#00184a] font-black text-sm">{myPlayerName.charAt(0)}</span>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="font-bold text-sm truncate">{myPlayerName}</p>
+                                        <p className="text-[9px] text-[#8e9192]">Playing as {playerColor}</p>
+                                    </div>
+                                </div>
+                                <div className={`ml-auto flex items-center gap-2 px-2 py-0.5 rounded-full border ${isMyTurn ? 'bg-[#e9c176]/10 border-[#e9c176]/20 text-[#e9c176]' : 'bg-white/5 border-white/10 text-[#8e9192]'}`}>
+                                    <div className={`w-1.5 h-1.5 rounded-full ${isMyTurn ? 'bg-[#e9c176] animate-pulse' : 'bg-slate-600'}`} />
+                                    <span className="text-[8px] font-bold uppercase tracking-[0.18em] whitespace-nowrap">{isMyTurn ? 'Your Turn' : 'Waiting'}</span>
+                                </div>
+                            </div>
                         </div>
-                    )}
-                    <section className="rounded-xl border border-[#45433f] bg-[#2f2e2b] text-white p-3">
-                        <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-base font-bold">Move History</h3>
-                            <span className="text-xs px-2 py-1 rounded-full bg-[#3a3936] text-gray-300">
-                                {moveHistory.length} moves
-                            </span>
+
+                        {/* Right Column: History */}
+                        <div className="xl:col-span-4 w-full max-w-2xl xl:max-w-none mx-auto xl:min-h-0">
+                            <div className="grid grid-cols-1">
+                                <div className="glass-obsidian border border-white/5 rounded-2xl p-3 sm:p-4 flex flex-col min-h-[14rem] sm:min-h-[18rem] xl:min-h-0 xl:h-full overflow-visible xl:overflow-hidden">
+                                    <div className="flex items-center justify-between mb-3 sm:mb-4 shrink-0 gap-2">
+                                        <h3 className="text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.18em] sm:tracking-[0.2em] text-[#444748] flex items-center gap-2 min-w-0">
+                                            <History className="w-3.5 h-3.5" />
+                                            <span className="truncate">Move History</span>
+                                        </h3>
+                                        <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/5 text-[9px] font-bold text-[#8e9192] whitespace-nowrap">
+                                            {moveHistory.length} PLY
+                                        </span>
+                                    </div>
+
+                                    <div className="overflow-visible xl:flex-1 xl:overflow-y-auto xl:custom-scrollbar xl:pr-1" ref={desktopHistoryRef}>
+                                        {getMoveHistoryRows.length === 0 ? (
+                                            <div className="min-h-[10rem] xl:h-full flex flex-col items-center justify-center text-center space-y-4 opacity-20 py-10 sm:py-12">
+                                                <div className="relative">
+                                                    <Swords className="w-10 h-10 sm:w-12 sm:h-12" />
+                                                    <div className="absolute inset-0 blur-xl bg-[#e9c176]/20" />
+                                                </div>
+                                                <p className="text-[10px] font-bold uppercase tracking-widest">No moves recorded</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-1">
+                                                {/* Header Labels */}
+                                                <div className="grid grid-cols-[40px_1fr_1fr] text-[9px] font-black uppercase tracking-[0.15em] text-[#444748] mb-2 px-1">
+                                                    <div className="text-center">#</div>
+                                                    <div className="text-center">White</div>
+                                                    <div className="text-center">Black</div>
+                                                </div>
+
+                                                {getMoveHistoryRows.map((row) => (
+                                                    <div 
+                                                        key={row.moveNumber} 
+                                                        className="grid grid-cols-[44px_1fr_1fr] items-stretch group border-b border-white/[0.02] last:border-0"
+                                                    >
+                                                        {/* Move Number Column */}
+                                                        <div className="flex items-center justify-center py-3 border-r border-white/[0.05] bg-black/20">
+                                                            <span className="font-mono text-[9px] font-black text-[#3f3f46] group-hover:text-[#e9c176]/40 transition-colors">
+                                                                {row.moveNumber.toString().padStart(2, '0')}
+                                                            </span>
+                                                        </div>
+
+                                                        {/* White Move */}
+                                                        <div className="relative px-1 py-1.5 flex items-center justify-center">
+                                                            {row.white && (
+                                                                <div className="relative w-full h-full flex items-center justify-center">
+                                                                    {row.white.ply === latestPly && (
+                                                                        <motion.div 
+                                                                            layoutId="online-active-pill"
+                                                                            className="absolute inset-0 z-0 bg-[#e9c176]/10 border border-[#e9c176]/20 rounded-lg shadow-[0_0_15px_rgba(233,193,118,0.05)]"
+                                                                            transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                                                        />
+                                                                    )}
+                                                                    <span className={`relative z-10 text-[13px] font-bold tracking-tight transition-colors duration-300 ${
+                                                                        row.white.ply === latestPly 
+                                                                            ? "text-[#e9c176]" 
+                                                                            : "text-[#fff6e9]/80 group-hover:text-[#fff6e9]"
+                                                                    }`}>
+                                                                        {row.white.san}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Black Move */}
+                                                        <div className="relative px-1 py-1.5 flex items-center justify-center border-l border-white/[0.05]">
+                                                            {row.black ? (
+                                                                <div className="relative w-full h-full flex items-center justify-center">
+                                                                    {row.black.ply === latestPly && (
+                                                                        <motion.div 
+                                                                            layoutId="online-active-pill"
+                                                                            className="absolute inset-0 z-0 bg-[#e9c176]/10 border border-[#e9c176]/20 rounded-lg shadow-[0_0_15px_rgba(233,193,118,0.05)]"
+                                                                            transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                                                        />
+                                                                    )}
+                                                                    <span className={`relative z-10 text-[13px] font-bold tracking-tight transition-colors duration-300 ${
+                                                                        row.black.ply === latestPly 
+                                                                            ? "text-[#e9c176]" 
+                                                                            : "text-[#94a3b8]/80 group-hover:text-[#cbd5e1]"
+                                                                    }`}>
+                                                                        {row.black.san}
+                                                                    </span>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="w-4 h-0.5 bg-white/5 rounded-full" />
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div className="grid grid-cols-[36px_minmax(0,1fr)_minmax(0,1fr)] gap-2 px-2 pb-2 text-[11px] uppercase tracking-wide text-gray-400">
-                            <div>#</div>
-                            <div className="text-center">White</div>
-                            <div className="text-center">Black</div>
-                        </div>
-                        {renderMoveHistoryTable(mobileHistoryRef, "max-h-56")}
-                    </section>
+                    </div>
                 </div>
-
-                <aside className="hidden lg:flex w-[340px] xl:w-[380px] shrink-0 flex-col gap-4 self-stretch">
-                    <button
-                        onClick={handleQuitGame}
-                        disabled={quitRequested || matchConclusion.isOpen}
-                        className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${quitRequested || matchConclusion.isOpen ? "border-[#5b5042] bg-[#40372c] text-[#d5cab8] cursor-not-allowed" : "border-[#8f4a4a] bg-[#5a3030] text-[#f8dedd] hover:bg-[#6a3737]"}`}
-                    >
-                        {quitRequested ? "Quitting..." : "Quit Match"}
-                    </button>
-                    {statusMessage && (
-                        <div className="rounded-xl border border-[#45433f] bg-[#2f2e2b] text-gray-200 px-4 py-3 text-sm">
-                            {statusMessage}
-                        </div>
-                    )}
-                    <section className="rounded-xl border border-[#45433f] bg-[#2f2e2b] text-white p-4 flex-1 min-h-0">
-                        <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-lg font-bold">Move History</h3>
-                            <span className="text-xs px-2 py-1 rounded-full bg-[#3a3936] text-gray-300">
-                                {moveHistory.length} moves
-                            </span>
-                        </div>
-                        <div className="grid grid-cols-[36px_minmax(0,1fr)_minmax(0,1fr)] gap-2 px-2 pb-2 text-[11px] uppercase tracking-wide text-gray-400">
-                            <div>#</div>
-                            <div className="text-center">White</div>
-                            <div className="text-center">Black</div>
-                        </div>
-                        {renderMoveHistoryTable(desktopHistoryRef, "max-h-[calc(100vh-220px)]")}
-                    </section>
-                </aside>
-            </div>
+            </main>
 
             <PromotionModal
                 isOpen={pendingPromotion.isOpen && !matchConclusion.isOpen}
@@ -1187,25 +1153,29 @@ function Game() {
                     }}
                 >
                     <section
-                        className="w-full max-w-md bg-[#2f2e2b] border border-[#5f5b53] rounded-2xl p-6 text-center text-white shadow-2xl"
+                        className="w-full max-w-md glass-obsidian border border-[#e9c176]/20 rounded-2xl p-6 text-center text-white shadow-2xl"
                         onClick={(event) => event.stopPropagation()}
                     >
-                        <h2 className="text-2xl font-extrabold mb-2">Quit Match?</h2>
-                        <p className="text-sm text-gray-300 mb-6">
+                        <h2 className="text-2xl font-extrabold mb-2 text-[#e9c176]">Quit Match?</h2>
+                        <p className="text-sm text-[#8e9192] mb-6">
                             If you quit now, this game will be recorded as a resignation.
                         </p>
                         <div className="flex flex-col sm:flex-row gap-3">
                             <button
                                 onClick={handleCancelQuit}
                                 disabled={quitRequested}
-                                className="flex-1 bg-[#3c3b38] hover:bg-[#4a4945] text-white font-bold px-5 py-3 rounded-xl transition-colors"
+                                className="flex-1 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-bold px-5 py-3 rounded-xl transition-colors"
                             >
                                 Keep Playing
                             </button>
                             <button
                                 onClick={handleConfirmQuit}
                                 disabled={quitRequested}
-                                className={`flex-1 font-bold px-5 py-3 rounded-xl transition-colors ${quitRequested ? "bg-[#6e614f] text-gray-200 cursor-not-allowed" : "bg-[#8f4a4a] hover:bg-[#9f5555] text-white"}`}
+                                className={`flex-1 font-bold px-5 py-3 rounded-xl transition-all active:scale-95 ${
+                                    quitRequested 
+                                        ? "bg-red-500/20 text-red-300/50 cursor-not-allowed" 
+                                        : "bg-red-500/80 hover:bg-red-600 text-white shadow-lg shadow-red-500/20"
+                                }`}
                             >
                                 {quitRequested ? "Quitting..." : "Confirm Quit"}
                             </button>
@@ -1218,22 +1188,26 @@ function Game() {
                 isOpen={matchConclusion.isOpen}
                 title={getConclusionTitle()}
                 subtitle={getConclusionSubtitle()}
-                extraContent={matchConclusion.rematchMessage ? <p className="text-sm text-gray-300">{matchConclusion.rematchMessage}</p> : undefined}
+                extraContent={matchConclusion.rematchMessage ? <p className="text-sm text-[#e9c176] font-medium">{matchConclusion.rematchMessage}</p> : undefined}
                 actions={[
                     {
                         label: getRematchButtonLabel(),
                         onClick: handleRematchRequest,
                         disabled: isRematchButtonDisabled,
-                        className: `flex-1 font-bold px-5 py-3 rounded-xl transition-colors ${isRematchButtonDisabled ? "bg-[#6e614f] text-gray-200 cursor-not-allowed" : "bg-[#b58863] hover:bg-[#a0764b] text-white"}`
+                        className: `flex-1 font-bold px-5 py-3 rounded-xl transition-all active:scale-95 ${
+                            isRematchButtonDisabled 
+                                ? "bg-[#e9c176]/20 text-[#e9c176]/50 cursor-not-allowed" 
+                                : "bg-gradient-gold text-[#00184a] hover:scale-[1.02] shadow-lg shadow-[#e9c176]/10"
+                        }`
                     },
                     {
                         label: "Home",
                         onClick: handleGoHome,
-                        className: "flex-1 bg-[#3c3b38] hover:bg-[#4a4945] text-white font-bold px-5 py-3 rounded-xl transition-colors"
+                        className: "flex-1 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-bold px-5 py-3 rounded-xl transition-all active:scale-95"
                     }
                 ]}
             />
-        </main>
+        </div>
     );
 }
 

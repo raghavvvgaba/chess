@@ -13,7 +13,6 @@ import {
 } from "../lib/stockfish";
 import { 
   Cpu, 
-  Settings2, 
   Swords, 
   RotateCcw, 
   Flag, 
@@ -200,11 +199,12 @@ function useMediaQuery(query: string): boolean {
 
 function PlayVsBot() {
   const { data: session } = authClient.useSession();
+  const isSmallMobile = useMediaQuery('(max-width: 420px)');
   const isMobile = useMediaQuery('(max-width: 768px)');
   
   // Card dimensions: width + horizontal margins (mx-4 = 16px*2)
-  const cardWidth = isMobile ? 260 : 320;
-  const cardGap = 32; // mx-4 on each side is 16+16=32
+  const cardWidth = isSmallMobile ? 216 : isMobile ? 260 : 320;
+  const cardGap = isSmallMobile ? 16 : isMobile ? 24 : 32;
   const totalCardSpace = cardWidth + cardGap;
   const centerOffset = totalCardSpace / 2;
 
@@ -492,10 +492,10 @@ function PlayVsBot() {
       <AppSidebar />
       <div className="bot-page__mesh" aria-hidden />
       
-      <main className="flex-1 relative z-10 px-4 pt-16 pb-4 md:px-8 md:py-6 lg:px-12 lg:py-8 overflow-hidden h-screen flex flex-col">
-        <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col min-h-0">
+      <main className="flex-1 relative z-10 h-screen overflow-y-auto px-3 pt-16 pb-4 sm:px-4 md:px-8 md:py-6 lg:px-12 lg:py-8 xl:overflow-hidden flex flex-col">
+        <div className="max-w-7xl mx-auto w-full xl:flex-1 flex flex-col xl:min-h-0">
           {phase === "setup" ? (
-            <div className="flex-1 flex flex-col justify-center py-8 overflow-y-auto custom-scrollbar">
+            <div className="flex-1 flex flex-col justify-center py-6 sm:py-8 overflow-y-auto custom-scrollbar">
               <AnimatePresence mode="wait">
                 {setupStep === "color" ? (
                   <motion.div 
@@ -504,31 +504,31 @@ function PlayVsBot() {
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 50 }}
                     transition={{ duration: 0.4, ease: "easeOut" }}
-                    className="space-y-8"
+                    className="space-y-6 sm:space-y-8"
                   >
-                    <div className="text-center space-y-2">
+                    <div className="text-center space-y-2 px-1">
                       <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#e9c176]/10 border border-[#e9c176]/20 text-[#e9c176] text-[10px] font-bold uppercase tracking-widest">
                         <span>Step 1 of 2</span>
                       </div>
-                      <h1 className="text-3xl md:text-5xl font-display font-extrabold tracking-tight">
+                      <h1 className="text-[clamp(1.9rem,6vw,3.5rem)] font-display font-extrabold tracking-tight">
                         Choose Your <span className="text-[#e9c176]">Side</span>
                       </h1>
                     </div>
 
-                    <div className="relative flex flex-col items-center gap-8 w-full max-w-5xl mx-auto">
+                    <div className="relative flex flex-col items-center gap-6 sm:gap-8 w-full max-w-5xl mx-auto">
                       <div className="relative w-full flex items-center justify-center">
                         {/* Navigation Arrows */}
-                        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 flex justify-between px-2 md:px-8 z-30 pointer-events-none">
+                        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 flex justify-between px-0.5 sm:px-2 md:px-8 z-30 pointer-events-none">
                           <button
                             onClick={() => {
                               const currentIndex = COLOR_OPTIONS.findIndex(o => o.value === setupColor);
                               const nextIndex = (currentIndex - 1 + COLOR_OPTIONS.length) % COLOR_OPTIONS.length;
                               setSetupColor(COLOR_OPTIONS[nextIndex].value);
                             }}
-                            className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10 hover:border-[#e9c176]/50 transition-all pointer-events-auto group backdrop-blur-md"
+                            className="w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-black/25 sm:bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10 hover:border-[#e9c176]/50 transition-all pointer-events-auto group backdrop-blur-md"
                             aria-label="Previous side"
                           >
-                            <ChevronLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
+                            <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 group-hover:-translate-x-0.5 transition-transform" />
                           </button>
                           <button
                             onClick={() => {
@@ -536,15 +536,15 @@ function PlayVsBot() {
                               const nextIndex = (currentIndex + 1) % COLOR_OPTIONS.length;
                               setSetupColor(COLOR_OPTIONS[nextIndex].value);
                             }}
-                            className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10 hover:border-[#e9c176]/50 transition-all pointer-events-auto group backdrop-blur-md"
+                            className="w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-black/25 sm:bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10 hover:border-[#e9c176]/50 transition-all pointer-events-auto group backdrop-blur-md"
                             aria-label="Next side"
                           >
-                            <ChevronRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
+                            <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-0.5 transition-transform" />
                           </button>
                         </div>
 
                         {/* Carousel Viewport */}
-                        <div className="w-full overflow-hidden py-8 px-4 mask-fade-edges-horizontal">
+                        <div className="w-full overflow-hidden py-5 sm:py-8 px-3 sm:px-4 mask-fade-edges-horizontal">
                           <motion.div 
                             className="flex items-center"
                             animate={{ 
@@ -562,39 +562,43 @@ function PlayVsBot() {
                                     opacity: active ? 1 : 0.3,
                                   }}
                                   transition={{ type: "spring", stiffness: 260, damping: 26 }}
-                                  style={{ width: cardWidth }}
-                                  className={`flex-shrink-0 aspect-[3/4] rounded-[2rem] border transition-all duration-500 relative overflow-hidden group mx-4 ${
+                                  className={`flex-shrink-0 aspect-[3/4] rounded-[1.6rem] sm:rounded-[2rem] border transition-all duration-500 relative overflow-hidden group ${
                                     active 
                                       ? "bg-gradient-to-b from-[#e9c176]/20 to-[#e9c176]/5 border-[#e9c176] shadow-[0_0_40px_rgba(233,193,118,0.15)]" 
                                       : "bg-white/5 border-white/5"
                                   }`}
+                                  style={{
+                                    width: cardWidth,
+                                    marginLeft: cardGap / 2,
+                                    marginRight: cardGap / 2
+                                  }}
                                 >
                                   <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80 z-10" />
-                                  <div className="absolute inset-0 flex items-center justify-center p-6 transition-transform duration-700 group-hover:scale-105">
+                                  <div className="absolute inset-0 flex items-center justify-center p-4 sm:p-6 transition-transform duration-700 group-hover:scale-105">
                                     {option.value === "random" ? (
                                       <div className="relative">
-                                        <img src="/Pieces/wk.png" alt="" className="w-24 h-24 absolute -translate-x-8 -rotate-12 blur-[1px] opacity-40" />
-                                        <img src="/Pieces/k.png" alt="" className="w-24 h-24 absolute translate-x-8 rotate-12 blur-[1px] opacity-40" />
-                                        <Dices className="w-16 h-16 text-[#e9c176] relative z-20 drop-shadow-[0_0_15px_rgba(233,193,118,0.5)]" />
+                                        <img src="/Pieces/wk.png" alt="" className="w-20 h-20 sm:w-24 sm:h-24 absolute -translate-x-6 sm:-translate-x-8 -rotate-12 blur-[1px] opacity-40" />
+                                        <img src="/Pieces/k.png" alt="" className="w-20 h-20 sm:w-24 sm:h-24 absolute translate-x-6 sm:translate-x-8 rotate-12 blur-[1px] opacity-40" />
+                                        <Dices className="w-14 h-14 sm:w-16 sm:h-16 text-[#e9c176] relative z-20 drop-shadow-[0_0_15px_rgba(233,193,118,0.5)]" />
                                       </div>
                                     ) : (
                                       <img 
                                         src={option.image} 
                                         alt={option.label}
-                                        className={`w-32 h-32 object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.6)] ${active ? "animate-float" : ""}`}
+                                        className={`w-24 h-24 sm:w-32 sm:h-32 object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.6)] ${active ? "animate-float" : ""}`}
                                       />
                                     )}
                                   </div>
-                                  <div className="absolute bottom-8 left-0 right-0 z-20 text-center space-y-2 px-4">
-                                    <h3 className={`text-2xl font-display font-bold ${active ? "text-[#e9c176]" : "text-white"}`}>{option.label}</h3>
-                                    <p className={`text-xs text-[#c4c7c7] transition-all duration-500 ${active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+                                  <div className="absolute bottom-6 sm:bottom-8 left-0 right-0 z-20 text-center space-y-1.5 sm:space-y-2 px-4">
+                                    <h3 className={`text-xl sm:text-2xl font-display font-bold ${active ? "text-[#e9c176]" : "text-white"}`}>{option.label}</h3>
+                                    <p className={`text-[11px] sm:text-xs text-[#c4c7c7] transition-all duration-500 leading-relaxed ${active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
                                       {option.description}
                                     </p>
                                   </div>
                                   {active && (
                                     <motion.div 
                                       layoutId="active-glow"
-                                      className="absolute inset-0 border-2 border-[#e9c176] rounded-[2rem] pointer-events-none"
+                                      className="absolute inset-0 border-2 border-[#e9c176] rounded-[1.6rem] sm:rounded-[2rem] pointer-events-none"
                                     />
                                   )}
                                 </motion.div>
@@ -606,7 +610,7 @@ function PlayVsBot() {
 
                       <button
                         onClick={() => setSetupStep("difficulty")}
-                        className="group flex items-center gap-3 px-10 py-4 bg-[#e9c176] text-[#00184a] rounded-xl font-bold text-base hover:scale-105 transition-all shadow-lg shadow-[#e9c176]/20 active:scale-95"
+                        className="group w-full sm:w-auto flex items-center justify-center gap-3 px-6 sm:px-10 py-3.5 sm:py-4 bg-[#e9c176] text-[#00184a] rounded-xl font-bold text-sm sm:text-base hover:scale-105 transition-all shadow-lg shadow-[#e9c176]/20 active:scale-95"
                       >
                         <span>Confirm Side</span>
                         <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
@@ -620,31 +624,31 @@ function PlayVsBot() {
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -50 }}
                     transition={{ duration: 0.4, ease: "easeOut" }}
-                    className="space-y-8"
+                    className="space-y-6 sm:space-y-8"
                   >
-                    <div className="text-center space-y-2">
+                    <div className="text-center space-y-2 px-1">
                       <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#e9c176]/10 border border-[#e9c176]/20 text-[#e9c176] text-[10px] font-bold uppercase tracking-widest">
                         <span>Step 2 of 2</span>
                       </div>
-                      <h1 className="text-3xl md:text-5xl font-display font-extrabold tracking-tight">
+                      <h1 className="text-[clamp(1.9rem,6vw,3.5rem)] font-display font-extrabold tracking-tight">
                         Choose Your <span className="text-[#e9c176]">Challenge</span>
                       </h1>
                     </div>
 
-                    <div className="relative flex flex-col items-center gap-8 w-full max-w-5xl mx-auto">
+                    <div className="relative flex flex-col items-center gap-6 sm:gap-8 w-full max-w-5xl mx-auto">
                       <div className="relative w-full flex items-center justify-center">
                         {/* Navigation Arrows */}
-                        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 flex justify-between px-2 md:px-8 z-30 pointer-events-none">
+                        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 flex justify-between px-0.5 sm:px-2 md:px-8 z-30 pointer-events-none">
                           <button
                             onClick={() => {
                               const currentIndex = DIFFICULTY_OPTIONS.indexOf(difficulty);
                               const nextIndex = (currentIndex - 1 + DIFFICULTY_OPTIONS.length) % DIFFICULTY_OPTIONS.length;
                               setDifficulty(DIFFICULTY_OPTIONS[nextIndex]);
                             }}
-                            className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10 hover:border-[#e9c176]/50 transition-all pointer-events-auto group backdrop-blur-md"
+                            className="w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-black/25 sm:bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10 hover:border-[#e9c176]/50 transition-all pointer-events-auto group backdrop-blur-md"
                             aria-label="Previous difficulty"
                           >
-                            <ChevronLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
+                            <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 group-hover:-translate-x-0.5 transition-transform" />
                           </button>
                           <button
                             onClick={() => {
@@ -652,15 +656,15 @@ function PlayVsBot() {
                               const nextIndex = (currentIndex + 1) % DIFFICULTY_OPTIONS.length;
                               setDifficulty(DIFFICULTY_OPTIONS[nextIndex]);
                             }}
-                            className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10 hover:border-[#e9c176]/50 transition-all pointer-events-auto group backdrop-blur-md"
+                            className="w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-black/25 sm:bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10 hover:border-[#e9c176]/50 transition-all pointer-events-auto group backdrop-blur-md"
                             aria-label="Next difficulty"
                           >
-                            <ChevronRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
+                            <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-0.5 transition-transform" />
                           </button>
                         </div>
 
                         {/* Carousel Viewport */}
-                        <div className="w-full overflow-hidden py-8 px-4 mask-fade-edges-horizontal">
+                        <div className="w-full overflow-hidden py-5 sm:py-8 px-3 sm:px-4 mask-fade-edges-horizontal">
                           <motion.div 
                             className="flex items-center"
                             animate={{ 
@@ -679,31 +683,35 @@ function PlayVsBot() {
                                     opacity: active ? 1 : 0.3,
                                   }}
                                   transition={{ type: "spring", stiffness: 260, damping: 26 }}
-                                  style={{ width: cardWidth }}
-                                  className={`flex-shrink-0 aspect-[3/4] rounded-[2rem] border transition-all duration-500 relative overflow-hidden group mx-4 ${
+                                  className={`flex-shrink-0 aspect-[3/4] rounded-[1.6rem] sm:rounded-[2rem] border transition-all duration-500 relative overflow-hidden group ${
                                     active 
                                       ? "bg-gradient-to-b from-[#e9c176]/20 to-[#e9c176]/5 border-[#e9c176] shadow-[0_0_40px_rgba(233,193,118,0.15)]" 
                                       : "bg-white/5 border-white/5"
                                   }`}
+                                  style={{
+                                    width: cardWidth,
+                                    marginLeft: cardGap / 2,
+                                    marginRight: cardGap / 2
+                                  }}
                                 >
                                   <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80 z-10" />
-                                  <div className="absolute inset-0 flex items-center justify-center p-6">
+                                  <div className="absolute inset-0 flex items-center justify-center p-4 sm:p-6">
                                     <div className={`relative transition-transform duration-700 group-hover:scale-105 ${active ? "animate-pulse" : ""}`}>
-                                      {option === "easy" && <Target className="w-16 h-16 text-blue-400 drop-shadow-[0_0_15px_rgba(96,165,250,0.4)]" />}
-                                      {option === "medium" && <Zap className="w-16 h-16 text-[#e9c176] drop-shadow-[0_0_15px_rgba(233,193,118,0.4)]" />}
-                                      {option === "hard" && <Swords className="w-16 h-16 text-rose-400 drop-shadow-[0_0_15px_rgba(251,113,133,0.4)]" />}
+                                      {option === "easy" && <Target className="w-14 h-14 sm:w-16 sm:h-16 text-blue-400 drop-shadow-[0_0_15px_rgba(96,165,250,0.4)]" />}
+                                      {option === "medium" && <Zap className="w-14 h-14 sm:w-16 sm:h-16 text-[#e9c176] drop-shadow-[0_0_15px_rgba(233,193,118,0.4)]" />}
+                                      {option === "hard" && <Swords className="w-14 h-14 sm:w-16 sm:h-16 text-rose-400 drop-shadow-[0_0_15px_rgba(251,113,133,0.4)]" />}
                                     </div>
                                   </div>
-                                  <div className="absolute bottom-8 left-0 right-0 z-20 text-center space-y-2 px-4">
-                                    <h3 className={`text-2xl font-display font-bold ${active ? "text-[#e9c176]" : "text-white"}`}>{preset.label}</h3>
-                                    <p className={`text-xs text-[#c4c7c7] transition-all duration-500 ${active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+                                  <div className="absolute bottom-6 sm:bottom-8 left-0 right-0 z-20 text-center space-y-1.5 sm:space-y-2 px-4">
+                                    <h3 className={`text-xl sm:text-2xl font-display font-bold ${active ? "text-[#e9c176]" : "text-white"}`}>{preset.label}</h3>
+                                    <p className={`text-[11px] sm:text-xs text-[#c4c7c7] transition-all duration-500 leading-relaxed ${active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
                                       {preset.summary}
                                     </p>
                                   </div>
                                   {active && (
                                     <motion.div 
                                       layoutId="active-glow-diff"
-                                      className="absolute inset-0 border-2 border-[#e9c176] rounded-[2rem] pointer-events-none"
+                                      className="absolute inset-0 border-2 border-[#e9c176] rounded-[1.6rem] sm:rounded-[2rem] pointer-events-none"
                                     />
                                   )}
                                 </motion.div>
@@ -713,10 +721,10 @@ function PlayVsBot() {
                         </div>
                       </div>
 
-                      <div className="flex gap-4">
+                      <div className="flex w-full flex-col sm:flex-row gap-3 sm:gap-4">
                         <button
                           onClick={() => setSetupStep("color")}
-                          className="group flex items-center gap-2 px-6 py-4 bg-white/5 border border-white/10 text-white rounded-xl font-bold text-sm hover:bg-white/10 transition-all active:scale-95"
+                          className="group w-full sm:w-auto flex items-center justify-center gap-2 px-5 sm:px-6 py-3.5 sm:py-4 bg-white/5 border border-white/10 text-white rounded-xl font-bold text-sm hover:bg-white/10 transition-all active:scale-95"
                         >
                           <ChevronLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
                           <span>Back</span>
@@ -724,7 +732,7 @@ function PlayVsBot() {
                         <button
                           onClick={() => void handleStartGame()}
                           disabled={engineBooting}
-                          className="group flex items-center gap-3 px-10 py-4 bg-gradient-gold text-[#00184a] rounded-xl font-bold text-base hover:scale-105 transition-all shadow-lg shadow-[#e9c176]/20 disabled:opacity-50 disabled:cursor-wait active:scale-95"
+                          className="group w-full sm:w-auto flex items-center justify-center gap-3 px-6 sm:px-10 py-3.5 sm:py-4 bg-gradient-gold text-[#00184a] rounded-xl font-bold text-sm sm:text-base hover:scale-105 transition-all shadow-lg shadow-[#e9c176]/20 disabled:opacity-50 disabled:cursor-wait active:scale-95"
                         >
                           {engineBooting ? (
                              <Clock className="w-4 h-4 animate-pulse" />
@@ -741,33 +749,79 @@ function PlayVsBot() {
               </AnimatePresence>
             </div>
           ) : (
-            <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch py-2 animate-in fade-in duration-500">
+            <div className="xl:flex-1 xl:min-h-0 grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-6 xl:gap-8 items-start xl:items-stretch py-2 animate-in fade-in duration-500">
+              {/* Floating Game Action Controls - Top Right */}
+              <div className="fixed sm:absolute top-4 right-4 sm:top-0 sm:right-0 z-[40]">
+                <div className="glass-obsidian border border-white/10 rounded-2xl p-1.5 flex items-center gap-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl">
+                  <button
+                    onClick={() => void returnToSetup()}
+                    className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-[#7b6747]/50 bg-[#44392a]/80 text-[#f3d58d] transition-all hover:bg-[#564731] hover:scale-105 active:scale-95"
+                    aria-label="New match"
+                    title="New match"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  </button>
+                  <button
+                    onClick={() => void handleResign()}
+                    disabled={phase !== "playing"}
+                    className={`inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border transition-all hover:scale-105 active:scale-95 ${
+                      phase !== "playing"
+                        ? "border-[#5b5042]/50 bg-[#40372c]/80 text-[#d5cab8] cursor-not-allowed opacity-50"
+                        : "border-[#8f4a4a]/50 bg-[#5a3030]/80 text-[#f8dedd] hover:bg-[#6a3737]"
+                    }`}
+                    aria-label="Resign match"
+                    title="Resign match"
+                  >
+                    <Flag className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  </button>
+                  
+                  <div className="w-px h-4 sm:h-5 bg-white/10 mx-0.5" />
+                  
+                  <button
+                    disabled
+                    className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-white/5 bg-white/[0.02] text-[#8e9192] cursor-not-allowed opacity-40"
+                    aria-label="Undo unavailable"
+                    title="Undo coming soon"
+                  >
+                    <Undo2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  </button>
+                  <button
+                    disabled
+                    className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-white/5 bg-white/[0.02] text-[#8e9192] cursor-not-allowed opacity-40"
+                    aria-label="Redo unavailable"
+                    title="Redo coming soon"
+                  >
+                    <Redo2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  </button>
+                </div>
+              </div>
+
               {/* Left Column: Board */}
-              <div className="lg:col-span-8 flex flex-col gap-4 min-h-0">
+              <div className="xl:col-span-8 w-full max-w-2xl xl:max-w-none mx-auto flex flex-col gap-3 sm:gap-4 xl:min-h-0">
                 {/* Bot Profile Card */}
-                <div className="glass-obsidian border border-white/5 rounded-xl p-2 flex items-center justify-between shrink-0">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                <div className="glass-obsidian border border-white/5 rounded-xl p-2 flex items-center justify-between gap-2 shrink-0">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
                       <Cpu className="w-4 h-4 text-blue-400" />
                     </div>
-                    <div>
-                      <p className="font-bold text-sm flex items-center gap-2">
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm flex items-center gap-2 min-w-0">
                         Bot
-                        <span className="px-1.5 py-0.5 rounded bg-white/5 text-[8px] font-bold uppercase tracking-wider text-blue-400 border border-blue-400/20">
+                        <span className="px-1.5 py-0.5 rounded bg-white/5 text-[8px] font-bold uppercase tracking-wider text-blue-400 border border-blue-400/20 whitespace-nowrap">
                           {difficultyPreset.label}
                         </span>
                       </p>
                     </div>
                   </div>
-                  <div className={`flex items-center gap-2 px-2.5 py-0.5 rounded-full border ${botThinking ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-white/5 border-white/10 text-[#8e9192]'}`}>
+                  <div className={`flex items-center gap-2 px-2 py-0.5 rounded-full border ${botThinking ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-white/5 border-white/10 text-[#8e9192]'}`}>
                     <div className={`w-1.5 h-1.5 rounded-full ${botThinking ? 'bg-blue-400 animate-pulse' : 'bg-slate-600'}`} />
-                    <span className="text-[8px] font-bold uppercase tracking-widest">{botThinking ? 'Thinking' : 'Waiting'}</span>
+                    <span className="text-[8px] font-bold uppercase tracking-[0.18em] whitespace-nowrap">{botThinking ? 'Thinking' : 'Waiting'}</span>
                   </div>
                 </div>
 
                 {/* Board Container */}
-                <div className="flex-1 min-h-0 flex items-center justify-center">
-                  <div className="w-full max-h-full aspect-square max-w-[min(100%,calc(100vh-18rem))] glass-obsidian border border-white/10 p-1 md:p-2 rounded-2xl shadow-2xl relative">
+                <div className="flex-none xl:flex-1 xl:min-h-0 flex items-center justify-center">
+                  <div className="w-full aspect-square max-w-[min(100%,calc(100svh-12rem))] sm:max-w-[min(100%,calc(100svh-24rem))] md:max-w-[min(100%,calc(100svh-22rem))] xl:max-w-[min(100%,calc(100svh-18rem))] glass-obsidian border border-white/10 p-1 sm:p-1.5 md:p-2 rounded-2xl shadow-2xl relative">
                     <div className="absolute inset-0 bg-gradient-to-br from-[#e9c176]/5 to-transparent pointer-events-none rounded-2xl" />
                     <ChessBoard
                       board={board}
@@ -786,81 +840,48 @@ function PlayVsBot() {
                 </div>
 
                 {/* Player Profile Card */}
-                <div className="glass-obsidian border border-white/5 rounded-xl p-2 flex items-center justify-between shrink-0">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-gradient-gold flex items-center justify-center">
+                <div className="glass-obsidian border border-white/5 rounded-xl p-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-gold flex items-center justify-center shrink-0">
                       <span className="text-[#00184a] font-black text-sm">{playerName.charAt(0)}</span>
                     </div>
-                    <div>
-                      <p className="font-bold text-sm">{playerName}</p>
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm truncate">{playerName}</p>
                       <p className="text-[9px] text-[#8e9192]">Playing as {humanColor}</p>
                     </div>
                   </div>
-                  <div className={`flex items-center gap-2 px-2.5 py-0.5 rounded-full border ${isHumanTurn ? 'bg-[#e9c176]/10 border-[#e9c176]/20 text-[#e9c176]' : 'bg-white/5 border-white/10 text-[#8e9192]'}`}>
+                  <div className={`ml-auto flex items-center gap-2 px-2 py-0.5 rounded-full border ${isHumanTurn ? 'bg-[#e9c176]/10 border-[#e9c176]/20 text-[#e9c176]' : 'bg-white/5 border-white/10 text-[#8e9192]'}`}>
                     <div className={`w-1.5 h-1.5 rounded-full ${isHumanTurn ? 'bg-[#e9c176] animate-pulse' : 'bg-slate-600'}`} />
-                    <span className="text-[8px] font-bold uppercase tracking-widest">{isHumanTurn ? 'Your Turn' : 'Waiting'}</span>
+                    <span className="text-[8px] font-bold uppercase tracking-[0.18em] whitespace-nowrap">{isHumanTurn ? 'Your Turn' : 'Waiting'}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Right Column: Controls & History */}
-              <div className="lg:col-span-4 flex flex-col gap-4 min-h-0">
-                {/* Action Controls */}
-                <div className="glass-obsidian border border-white/5 rounded-2xl p-4 space-y-3 shrink-0">
-                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#444748] flex items-center gap-2">
-                    <Settings2 className="w-3.5 h-3.5" />
-                    Controls
-                  </h3>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => void returnToSetup()}
-                      className="flex flex-col items-center gap-1 p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 transition-all group"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5 text-[#e9c176] group-hover:rotate-[-30deg] transition-transform" />
-                      <span className="text-[9px] font-bold uppercase tracking-tighter">New Match</span>
-                    </button>
-                    <button
-                      onClick={() => void handleResign()}
-                      disabled={phase !== "playing"}
-                      className="flex flex-col items-center gap-1 p-2 rounded-xl bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/10 transition-all group disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      <Flag className="w-3.5 h-3.5 text-rose-400 group-hover:translate-y-[-2px] transition-transform" />
-                      <span className="text-[9px] font-bold uppercase tracking-tighter">Resign</span>
-                    </button>
-                  </div>
-                  <div className="flex gap-2">
-                    <button className="flex-1 flex items-center justify-center p-2 rounded-lg bg-white/5 opacity-50 cursor-not-allowed" title="Coming soon">
-                      <Undo2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button className="flex-1 flex items-center justify-center p-2 rounded-lg bg-white/5 opacity-50 cursor-not-allowed" title="Coming soon">
-                      <Redo2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
+              {/* Right Column: History */}
+              <div className="xl:col-span-4 w-full max-w-2xl xl:max-w-none mx-auto xl:min-h-0">
+                <div className="grid grid-cols-1">
+                  <div className="glass-obsidian border border-white/5 rounded-2xl p-3 sm:p-4 flex flex-col min-h-[14rem] sm:min-h-[18rem] xl:min-h-0 xl:h-full overflow-visible xl:overflow-hidden">
+                    <div className="flex items-center justify-between mb-3 sm:mb-4 shrink-0 gap-2">
+                      <h3 className="text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.18em] sm:tracking-[0.2em] text-[#444748] flex items-center gap-2 min-w-0">
+                        <History className="w-3.5 h-3.5" />
+                        <span className="truncate">Move History</span>
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/5 text-[9px] font-bold text-[#8e9192] whitespace-nowrap">
+                        {moveHistory.length} PLY
+                      </span>
+                    </div>
 
-                {/* Move History */}
-                <div className="glass-obsidian border border-white/5 rounded-2xl p-4 flex-1 flex flex-col min-h-0 overflow-hidden">
-                  <div className="flex items-center justify-between mb-4 shrink-0">
-                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#444748] flex items-center gap-2">
-                      <History className="w-3.5 h-3.5" />
-                      Move History
-                    </h3>
-                    <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/5 text-[9px] font-bold text-[#8e9192]">
-                      {moveHistory.length} PLY
-                    </span>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto custom-scrollbar pr-1" ref={desktopHistoryRef}>
-                    {getMoveHistoryRows.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-20 py-12">
-                        <div className="relative">
-                          <Swords className="w-12 h-12" />
-                          <div className="absolute inset-0 blur-xl bg-[#e9c176]/20" />
+                    <div className="overflow-visible xl:flex-1 xl:overflow-y-auto xl:custom-scrollbar xl:pr-1" ref={desktopHistoryRef}>
+                      {getMoveHistoryRows.length === 0 ? (
+                        <div className="min-h-[10rem] xl:h-full flex flex-col items-center justify-center text-center space-y-4 opacity-20 py-10 sm:py-12">
+                          <div className="relative">
+                            <Swords className="w-10 h-10 sm:w-12 sm:h-12" />
+                            <div className="absolute inset-0 blur-xl bg-[#e9c176]/20" />
+                          </div>
+                          <p className="text-[10px] font-bold uppercase tracking-widest">No moves recorded</p>
                         </div>
-                        <p className="text-[10px] font-bold uppercase tracking-widest">No moves recorded</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
+                      ) : (
+                        <div className="space-y-1">
                         {/* Header Labels */}
                         <div className="grid grid-cols-[40px_1fr_1fr] text-[9px] font-black uppercase tracking-[0.15em] text-[#444748] mb-2 px-1">
                           <div className="text-center">#</div>
@@ -868,11 +889,11 @@ function PlayVsBot() {
                           <div className="text-center">Black</div>
                         </div>
 
-                        {getMoveHistoryRows.map((row) => (
-                          <div 
-                            key={row.moveNumber} 
-                            className="grid grid-cols-[44px_1fr_1fr] items-stretch group border-b border-white/[0.02] last:border-0"
-                          >
+                          {getMoveHistoryRows.map((row) => (
+                            <div 
+                              key={row.moveNumber} 
+                              className="grid grid-cols-[44px_1fr_1fr] items-stretch group border-b border-white/[0.02] last:border-0"
+                            >
                             {/* Move Number Column - Ticker Style */}
                             <div className="flex items-center justify-center py-3 border-r border-white/[0.05] bg-black/20">
                               <span className="font-mono text-[9px] font-black text-[#3f3f46] group-hover:text-[#e9c176]/40 transition-colors">
@@ -925,10 +946,11 @@ function PlayVsBot() {
                                 <div className="w-4 h-0.5 bg-white/5 rounded-full" />
                               )}
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -950,11 +972,6 @@ function PlayVsBot() {
         subtitle={matchConclusion.subtitle}
         detail={matchConclusion.detail}
         actions={[
-          {
-            label: "Review Match",
-            onClick: () => setMatchConclusion(prev => ({ ...prev, isOpen: false })),
-            className: "flex-1 rounded-xl border border-[#e9c176]/20 bg-[#e9c176]/10 py-3 font-bold text-[#e9c176] transition hover:bg-[#e9c176]/20",
-          },
           {
             label: "New Run",
             onClick: () => { void returnToSetup(); },

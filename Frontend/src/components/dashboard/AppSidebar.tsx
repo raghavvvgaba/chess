@@ -9,9 +9,7 @@ import {
   LogOut, 
   Menu, 
   X, 
-  Search,
   User,
-  Settings,
   Shield
 } from "lucide-react";
 
@@ -83,17 +81,8 @@ function AppSidebar({ chessUserId, onCopyChessId, onStartOnlineMatch, copyState 
             </div>
           </div>
 
-          {/* Search */}
+          {/* Action Section */}
           <div className="px-6 py-4">
-            <div className="relative group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8e9192] group-focus-within:text-[#e9c176] transition-colors" />
-              <input
-                type="text"
-                placeholder="Find a player..."
-                className="w-full bg-white/5 border border-white/5 rounded-2xl py-3 pl-11 pr-4 text-sm text-[#c4c7c7] placeholder:text-[#8e9192]/60 focus:outline-none focus:ring-2 focus:ring-[#e9c176]/20 focus:border-[#e9c176]/40 transition-all"
-              />
-            </div>
-
             <button
               type="button"
               onClick={() => {
@@ -104,7 +93,7 @@ function AppSidebar({ chessUserId, onCopyChessId, onStartOnlineMatch, copyState 
                 }
                 setIsMobileMenuOpen(false);
               }}
-              className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-gold px-4 py-3 text-sm font-bold text-[#00184a] shadow-[0_10px_30px_rgba(233,193,118,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
+              className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-gold px-4 py-3 text-sm font-bold text-[#00184a] shadow-[0_10px_30px_rgba(233,193,118,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
             >
               <Swords className="w-4 h-4" />
               New Match
@@ -139,14 +128,6 @@ function AppSidebar({ chessUserId, onCopyChessId, onStartOnlineMatch, copyState 
                 </button>
               );
             })}
-
-            <div className="pt-8 opacity-50">
-               <p className="px-4 text-[10px] font-bold text-[#444748] uppercase tracking-[0.2em] mb-4">Account</p>
-               <button className="w-full flex items-center gap-4 rounded-2xl px-4 py-3.5 text-[#8e9192] hover:bg-white/5 hover:text-white transition-all">
-                 <Settings className="w-5 h-5" />
-                 <span className="text-sm font-medium tracking-wide">Settings</span>
-               </button>
-            </div>
           </nav>
 
           {/* User Footer */}
