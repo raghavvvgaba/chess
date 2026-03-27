@@ -600,11 +600,6 @@ export class GameManager {
             if (message.type === REMATCH_REQUEST) {
                 const game = this.getGameForUserId(socket.userId);
                 if (game) {
-                    if (game.isGameConcluded()) {
-                        this.removeConcludedGame(game);
-                        this.sendActionRejected(socket, "not_in_game");
-                        return;
-                    }
                     if (!game.containsPlayer(socket)) {
                         this.sendActionRejected(socket, "not_game_participant");
                         return;
