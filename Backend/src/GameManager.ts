@@ -588,9 +588,6 @@ export class GameManager {
                         return;
                     }
                     await game.makeMove(socket, message.payload.move);
-                    if (game.isGameConcluded()) {
-                        this.removeConcludedGame(game);
-                    }
                 } else {
                     this.sendActionRejected(socket, "not_in_game");
                 }
@@ -623,9 +620,6 @@ export class GameManager {
                         return;
                     }
                     await game.quitGame(socket);
-                    if (game.isGameConcluded()) {
-                        this.removeConcludedGame(game);
-                    }
                 } else {
                     this.sendActionRejected(socket, "not_in_game");
                 }
