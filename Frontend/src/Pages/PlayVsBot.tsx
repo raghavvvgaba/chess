@@ -63,6 +63,18 @@ type MatchConclusion = {
   detail: string;
 };
 
+type PersistedBotGameSnapshot = {
+  version: 1;
+  savedAt: string;
+  userScope: string;
+  fen: string;
+  humanColor: ActiveColor;
+  difficulty: BotDifficulty;
+  moveHistory: MoveHistoryEntry[];
+  lastMove: LastMove;
+  phase: "playing";
+};
+
 const DEFAULT_PENDING_PROMOTION: PendingPromotion = {
   isOpen: false,
   from: null,
@@ -76,6 +88,9 @@ const DEFAULT_MATCH_CONCLUSION: MatchConclusion = {
   subtitle: "",
   detail: "",
 };
+
+const BOT_GAME_SNAPSHOT_VERSION = 1 as const;
+const BOT_GAME_STORAGE_PREFIX = "chess.bot-game";
 
 const COLOR_OPTIONS: { value: SetupColor; label: string; description: string; image: string }[] = [
   {
@@ -126,6 +141,46 @@ const getPromotionLabel = (piece: PromotionPiece) => {
   if (piece === "r") return "Rook";
   if (piece === "b") return "Bishop";
   return "Knight";
+};
+
+const getBotGameStorageKey = (userScope: string) => `${BOT_GAME_STORAGE_PREFIX}:${userScope}`;
+
+const isValidLastMove = (value: unknown): value is LastMove => {
+  if (value === null) return true;
+  if (!value || typeof value !== "object") return false;
+
+  const move = value as Record<string, unknown>;
+  return typeof move.from === "string" && typeof move.to === "string";
+};
+
+const isValidMoveHistoryEntry = (value: unknown): value is MoveHistoryEntry => {
+  if (!value || typeof value !== "object") return false;
+
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.ply === "number" &&
+    typeof entry.san === "string" &&
+    (entry.color === "white" || entry.color === "black") &&
+    typeof entry.moveNumber === "number"
+  );
+};
+
+const isPersistedBotGameSnapshot = (value: unknown): value is PersistedBotGameSnapshot => {
+  if (!value || typeof value !== "object") return false;
+
+  const snapshot = value as Record<string, unknown>;
+  return (
+    snapshot.version === BOT_GAME_SNAPSHOT_VERSION &&
+    typeof snapshot.savedAt === "string" &&
+    typeof snapshot.userScope === "string" &&
+    typeof snapshot.fen === "string" &&
+    (snapshot.humanColor === "white" || snapshot.humanColor === "black") &&
+    (snapshot.difficulty === "easy" || snapshot.difficulty === "medium" || snapshot.difficulty === "hard") &&
+    snapshot.phase === "playing" &&
+    Array.isArray(snapshot.moveHistory) &&
+    snapshot.moveHistory.every(isValidMoveHistoryEntry) &&
+    isValidLastMove(snapshot.lastMove)
+  );
 };
 
 const resolveHumanColor = (selection: SetupColor): ActiveColor => {
@@ -198,7 +253,7 @@ function useMediaQuery(query: string): boolean {
 }
 
 function PlayVsBot() {
-  const { data: session } = authClient.useSession();
+  const { data: session, isPending: sessionPending } = authClient.useSession();
   const isSmallMobile = useMediaQuery('(max-width: 420px)');
   const isMobile = useMediaQuery('(max-width: 768px)');
   
@@ -215,6 +270,7 @@ function PlayVsBot() {
   const humanColorRef = useRef<ActiveColor>("white");
   const difficultyRef = useRef<BotDifficulty>("medium");
   const desktopHistoryRef = useRef<HTMLDivElement | null>(null);
+  const restoredBotTurnRef = useRef(false);
 
   const [setupColor, setSetupColor] = useState<SetupColor>("random");
   const [difficulty, setDifficulty] = useState<BotDifficulty>("medium");
@@ -237,6 +293,17 @@ function PlayVsBot() {
   const latestMovePly = moveHistory.at(-1)?.ply ?? null;
   const isHumanTurn = currentTurn === (humanColor === "white" ? "w" : "b");
   const playerName = session?.user?.name?.split(' ')[0] || "Player";
+  const sessionUserScope = useMemo(() => {
+    if (session?.user && typeof session.user === "object" && "id" in session.user) {
+      const userId = (session.user as Record<string, unknown>).id;
+      if (typeof userId === "string" && userId.trim().length > 0) {
+        return `user:${userId}`;
+      }
+    }
+
+    return "guest";
+  }, [session]);
+  const activeStorageKey = useMemo(() => getBotGameStorageKey(sessionUserScope), [sessionUserScope]);
   
   const promotionChoices = (["q", "r", "b", "n"] as PromotionPiece[])
     .filter((piece) => pendingPromotion.availablePromotions.includes(piece))
@@ -253,6 +320,16 @@ function PlayVsBot() {
     setCheckedKingSquare(getCheckedKingSquare(chessRef.current));
   };
 
+  const clearPersistedBotGame = () => {
+    if (typeof window === "undefined") return;
+
+    try {
+      window.localStorage.removeItem(activeStorageKey);
+    } catch (error) {
+      console.warn("Failed to clear persisted bot game.", error);
+    }
+  };
+
   const resetVisualState = () => {
     setLastMove(null);
     setMoveHistory([]);
@@ -261,12 +338,20 @@ function PlayVsBot() {
     setCheckedKingSquare(null);
   };
 
-  const finalizeMatch = (conclusion: MatchConclusion) => {
+  const finalizeMatch = (
+    conclusion: MatchConclusion,
+    options?: { clearPersistedGame?: boolean },
+  ) => {
+    if (options?.clearPersistedGame) {
+      clearPersistedBotGame();
+    }
+
     setPhase("game_over");
     setMatchConclusion(conclusion);
     setBotThinking(false);
     setCurrentTurn(null);
     activeThinkTokenRef.current = 0;
+    restoredBotTurnRef.current = false;
   };
 
   const applyMove = (
@@ -294,7 +379,7 @@ function PlayVsBot() {
 
     const conclusion = getMatchConclusionFromChess(chessRef.current, humanColorRef.current);
     if (conclusion) {
-      finalizeMatch(conclusion);
+      finalizeMatch(conclusion, { clearPersistedGame: true });
       return { move: appliedMove, isGameOver: true };
     }
 
@@ -332,7 +417,7 @@ function PlayVsBot() {
 
       if (bestMove === "(none)") {
         const conclusion = getMatchConclusionFromChess(chessRef.current, humanColorRef.current);
-        if (conclusion) finalizeMatch(conclusion);
+        if (conclusion) finalizeMatch(conclusion, { clearPersistedGame: true });
         return;
       }
 
@@ -356,6 +441,8 @@ function PlayVsBot() {
   const returnToSetup = async () => {
     activeGameTokenRef.current += 1;
     activeThinkTokenRef.current = 0;
+    restoredBotTurnRef.current = false;
+    clearPersistedBotGame();
     setPhase("setup");
     setSetupStep("color");
     setBotThinking(false);
@@ -374,6 +461,85 @@ function PlayVsBot() {
       desktopHistoryRef.current.scrollTop = desktopHistoryRef.current.scrollHeight;
     }
   }, [moveHistory]);
+
+  useEffect(() => {
+    if (sessionPending || phase !== "setup" || typeof window === "undefined") return;
+
+    const rawSnapshot = window.localStorage.getItem(activeStorageKey);
+    if (!rawSnapshot) return;
+
+    try {
+      const parsedSnapshot: unknown = JSON.parse(rawSnapshot);
+      if (!isPersistedBotGameSnapshot(parsedSnapshot) || parsedSnapshot.userScope !== sessionUserScope) {
+        window.localStorage.removeItem(activeStorageKey);
+        return;
+      }
+
+      const restoredChess = new Chess(parsedSnapshot.fen);
+      if (restoredChess.isGameOver()) {
+        window.localStorage.removeItem(activeStorageKey);
+        return;
+      }
+
+      activeGameTokenRef.current += 1;
+      activeThinkTokenRef.current = 0;
+      restoredBotTurnRef.current =
+        restoredChess.turn() !== (parsedSnapshot.humanColor === "white" ? "w" : "b");
+
+      chessRef.current = restoredChess;
+      humanColorRef.current = parsedSnapshot.humanColor;
+      difficultyRef.current = parsedSnapshot.difficulty;
+
+      setSetupColor(parsedSnapshot.humanColor);
+      setDifficulty(parsedSnapshot.difficulty);
+      setHumanColor(parsedSnapshot.humanColor);
+      setPhase("playing");
+      setBotThinking(false);
+      setLastMove(parsedSnapshot.lastMove);
+      setMoveHistory(parsedSnapshot.moveHistory);
+      setPendingPromotion(DEFAULT_PENDING_PROMOTION);
+      setMatchConclusion(DEFAULT_MATCH_CONCLUSION);
+      syncBoardStateFromChess();
+    } catch (error) {
+      console.warn("Failed to restore persisted bot game.", error);
+      window.localStorage.removeItem(activeStorageKey);
+    }
+  }, [activeStorageKey, phase, sessionPending, sessionUserScope]);
+
+  useEffect(() => {
+    if (sessionPending || phase !== "playing" || matchConclusion.isOpen || typeof window === "undefined") {
+      return;
+    }
+
+    const snapshot: PersistedBotGameSnapshot = {
+      version: BOT_GAME_SNAPSHOT_VERSION,
+      savedAt: new Date().toISOString(),
+      userScope: sessionUserScope,
+      fen: currentFen,
+      humanColor,
+      difficulty,
+      moveHistory,
+      lastMove,
+      phase: "playing",
+    };
+
+    try {
+      window.localStorage.setItem(activeStorageKey, JSON.stringify(snapshot));
+    } catch (error) {
+      console.warn("Failed to persist bot game.", error);
+    }
+  }, [
+    activeStorageKey,
+    currentFen,
+    difficulty,
+    humanColor,
+    lastMove,
+    matchConclusion.isOpen,
+    moveHistory,
+    phase,
+    sessionPending,
+    sessionUserScope,
+  ]);
 
   useEffect(() => {
     const adapter = new StockfishAdapter();
@@ -399,6 +565,21 @@ function PlayVsBot() {
     };
   }, []);
 
+  useEffect(() => {
+    if (engineBooting || !restoredBotTurnRef.current || phase !== "playing" || botThinking || matchConclusion.isOpen) {
+      return;
+    }
+
+    const botToMove = chessRef.current.turn() !== (humanColor === "white" ? "w" : "b");
+    if (!botToMove) {
+      restoredBotTurnRef.current = false;
+      return;
+    }
+
+    restoredBotTurnRef.current = false;
+    void requestBotMove(activeGameTokenRef.current);
+  }, [botThinking, engineBooting, humanColor, matchConclusion.isOpen, phase]);
+
   const handleStartGame = async () => {
     const nextHumanColor = resolveHumanColor(setupColor);
     humanColorRef.current = nextHumanColor;
@@ -406,6 +587,7 @@ function PlayVsBot() {
 
     activeGameTokenRef.current += 1;
     activeThinkTokenRef.current = 0;
+    restoredBotTurnRef.current = false;
 
     setHumanColor(nextHumanColor);
     setPhase("playing");
@@ -468,12 +650,15 @@ function PlayVsBot() {
   const handleResign = async () => {
     if (phase !== "playing") return;
     await engineRef.current?.stopThinking();
-    finalizeMatch({
-      isOpen: true,
-      title: "Resignation",
-      subtitle: "You resigned the match.",
-      detail: "Sometimes the wisest move is to reset and try again.",
-    });
+    finalizeMatch(
+      {
+        isOpen: true,
+        title: "Resignation",
+        subtitle: "You resigned the match.",
+        detail: "Sometimes the wisest move is to reset and try again.",
+      },
+      { clearPersistedGame: true },
+    );
   };
 
   const getMoveHistoryRows = useMemo(() => {
@@ -749,53 +934,7 @@ function PlayVsBot() {
               </AnimatePresence>
             </div>
           ) : (
-            <div className="xl:flex-1 xl:min-h-0 grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-6 xl:gap-8 items-start xl:items-stretch py-2 animate-in fade-in duration-500">
-              {/* Floating Game Action Controls - Top Right */}
-              <div className="fixed sm:absolute top-4 right-4 sm:top-0 sm:right-0 z-[40]">
-                <div className="glass-obsidian border border-white/10 rounded-2xl p-1.5 flex items-center gap-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl">
-                  <button
-                    onClick={() => void returnToSetup()}
-                    className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-[#7b6747]/50 bg-[#44392a]/80 text-[#f3d58d] transition-all hover:bg-[#564731] hover:scale-105 active:scale-95"
-                    aria-label="New match"
-                    title="New match"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  </button>
-                  <button
-                    onClick={() => void handleResign()}
-                    disabled={phase !== "playing"}
-                    className={`inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border transition-all hover:scale-105 active:scale-95 ${
-                      phase !== "playing"
-                        ? "border-[#5b5042]/50 bg-[#40372c]/80 text-[#d5cab8] cursor-not-allowed opacity-50"
-                        : "border-[#8f4a4a]/50 bg-[#5a3030]/80 text-[#f8dedd] hover:bg-[#6a3737]"
-                    }`}
-                    aria-label="Resign match"
-                    title="Resign match"
-                  >
-                    <Flag className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  </button>
-                  
-                  <div className="w-px h-4 sm:h-5 bg-white/10 mx-0.5" />
-                  
-                  <button
-                    disabled
-                    className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-white/5 bg-white/[0.02] text-[#8e9192] cursor-not-allowed opacity-40"
-                    aria-label="Undo unavailable"
-                    title="Undo coming soon"
-                  >
-                    <Undo2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  </button>
-                  <button
-                    disabled
-                    className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-white/5 bg-white/[0.02] text-[#8e9192] cursor-not-allowed opacity-40"
-                    aria-label="Redo unavailable"
-                    title="Redo coming soon"
-                  >
-                    <Redo2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  </button>
-                </div>
-              </div>
-
+            <div className="relative xl:flex-1 xl:min-h-0 grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-6 xl:gap-8 items-start xl:items-stretch py-2 animate-in fade-in duration-500">
               {/* Left Column: Board */}
               <div className="xl:col-span-8 w-full max-w-2xl xl:max-w-none mx-auto flex flex-col gap-3 sm:gap-4 xl:min-h-0">
                 {/* Bot Profile Card */}
@@ -858,8 +997,54 @@ function PlayVsBot() {
               </div>
 
               {/* Right Column: History */}
-              <div className="xl:col-span-4 w-full max-w-2xl xl:max-w-none mx-auto xl:min-h-0">
-                <div className="grid grid-cols-1">
+              <div className="xl:col-span-4 w-full max-w-2xl xl:max-w-none mx-auto xl:min-h-0 flex flex-col gap-3 sm:gap-4">
+                {/* Game Action Controls */}
+                <div className="fixed sm:absolute xl:static top-4 right-4 sm:top-0 sm:right-0 z-[40] xl:z-auto flex xl:justify-end">
+                  <div className="glass-obsidian border border-white/10 rounded-2xl p-1.5 flex items-center gap-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl">
+                    <button
+                      onClick={() => void returnToSetup()}
+                      className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-[#7b6747]/50 bg-[#44392a]/80 text-[#f3d58d] transition-all hover:bg-[#564731] hover:scale-105 active:scale-95"
+                      aria-label="New match"
+                      title="New match"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    </button>
+                    <button
+                      onClick={() => void handleResign()}
+                      disabled={phase !== "playing"}
+                      className={`inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border transition-all hover:scale-105 active:scale-95 ${
+                        phase !== "playing"
+                          ? "border-[#5b5042]/50 bg-[#40372c]/80 text-[#d5cab8] cursor-not-allowed opacity-50"
+                          : "border-[#8f4a4a]/50 bg-[#5a3030]/80 text-[#f8dedd] hover:bg-[#6a3737]"
+                      }`}
+                      aria-label="Resign match"
+                      title="Resign match"
+                    >
+                      <Flag className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    </button>
+                    
+                    <div className="w-px h-4 sm:h-5 bg-white/10 mx-0.5" />
+                    
+                    <button
+                      disabled
+                      className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-white/5 bg-white/[0.02] text-[#8e9192] cursor-not-allowed opacity-40"
+                      aria-label="Undo unavailable"
+                      title="Undo coming soon"
+                    >
+                      <Undo2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    </button>
+                    <button
+                      disabled
+                      className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-white/5 bg-white/[0.02] text-[#8e9192] cursor-not-allowed opacity-40"
+                      aria-label="Undo unavailable"
+                      title="Redo coming soon"
+                    >
+                      <Redo2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 flex-1 xl:min-h-0">
                   <div className="glass-obsidian border border-white/5 rounded-2xl p-3 sm:p-4 flex flex-col min-h-[14rem] sm:min-h-[18rem] xl:min-h-0 xl:h-full overflow-visible xl:overflow-hidden">
                     <div className="flex items-center justify-between mb-3 sm:mb-4 shrink-0 gap-2">
                       <h3 className="text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.18em] sm:tracking-[0.2em] text-[#444748] flex items-center gap-2 min-w-0">

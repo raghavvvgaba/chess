@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Chess, type Square } from "chess.js";
 import { useNavigate, useSearchParams, useLocation } from "react-router";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import ChessBoard from "../components/ChessBoard";
 import MatchConclusionModal from "../components/game/MatchConclusionModal";
 import PromotionModal from "../components/game/PromotionModal";
@@ -11,19 +11,8 @@ import AppSidebar from "../components/dashboard/AppSidebar";
 import { 
   History, 
   Swords, 
-  Flag,
-  RotateCcw,
-  Cpu,
   User,
-  LogOut,
-  ChevronRight,
-  ChevronLeft,
-  Zap,
-  Play,
-  Clock,
-  Target,
-  Dices,
-  Shield
+  LogOut
 } from "lucide-react";
 
 export const INIT_GAME = "init_game";
@@ -956,26 +945,7 @@ function Game() {
 
             <main className="flex-1 relative z-10 h-screen overflow-y-auto px-3 pt-16 pb-4 sm:px-4 md:px-8 md:py-6 lg:px-12 lg:py-8 xl:overflow-hidden flex flex-col">
                 <div className="max-w-7xl mx-auto w-full xl:flex-1 flex flex-col xl:min-h-0">
-                    <div className="xl:flex-1 xl:min-h-0 grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-6 xl:gap-8 items-start xl:items-stretch py-2 animate-in fade-in duration-500">
-                        {/* Floating Game Action Controls - Top Right */}
-                        <div className="fixed sm:absolute top-4 right-4 sm:top-0 sm:right-0 z-[40]">
-                            <div className="glass-obsidian border border-white/10 rounded-2xl p-1.5 flex items-center gap-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl">
-                                <button
-                                    onClick={handleQuitGame}
-                                    disabled={quitRequested || matchConclusion.isOpen}
-                                    className={`inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border transition-all hover:scale-105 active:scale-95 ${
-                                        quitRequested || matchConclusion.isOpen
-                                            ? "border-[#5b5042]/50 bg-[#40372c]/80 text-[#d5cab8] cursor-not-allowed opacity-50"
-                                            : "border-[#8f4a4a]/50 bg-[#5a3030]/80 text-[#f8dedd] hover:bg-[#6a3737]"
-                                    }`}
-                                    aria-label="Quit match"
-                                    title="Quit match"
-                                >
-                                    <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                                </button>
-                            </div>
-                        </div>
-
+                    <div className="relative xl:flex-1 xl:min-h-0 grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-6 xl:gap-8 items-start xl:items-stretch py-2 animate-in fade-in duration-500">
                         {/* Left Column: Board */}
                         <div className="xl:col-span-8 w-full max-w-2xl xl:max-w-none mx-auto flex flex-col gap-3 sm:gap-4 xl:min-h-0">
                             {/* Opponent Profile Card */}
@@ -1036,8 +1006,27 @@ function Game() {
                         </div>
 
                         {/* Right Column: History */}
-                        <div className="xl:col-span-4 w-full max-w-2xl xl:max-w-none mx-auto xl:min-h-0">
-                            <div className="grid grid-cols-1">
+                        <div className="xl:col-span-4 w-full max-w-2xl xl:max-w-none mx-auto xl:min-h-0 flex flex-col gap-3 sm:gap-4">
+                            {/* Game Action Controls */}
+                            <div className="fixed sm:absolute xl:static top-4 right-4 sm:top-0 sm:right-0 z-[40] xl:z-auto flex xl:justify-end">
+                                <div className="glass-obsidian border border-white/10 rounded-2xl p-1.5 flex items-center gap-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl">
+                                    <button
+                                        onClick={handleQuitGame}
+                                        disabled={quitRequested || matchConclusion.isOpen}
+                                        className={`inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border transition-all hover:scale-105 active:scale-95 ${
+                                            quitRequested || matchConclusion.isOpen
+                                                ? "border-[#5b5042]/50 bg-[#40372c]/80 text-[#d5cab8] cursor-not-allowed opacity-50"
+                                                : "border-[#8f4a4a]/50 bg-[#5a3030]/80 text-[#f8dedd] hover:bg-[#6a3737]"
+                                        }`}
+                                        aria-label="Quit match"
+                                        title="Quit match"
+                                    >
+                                        <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 flex-1 xl:min-h-0">
                                 <div className="glass-obsidian border border-white/5 rounded-2xl p-3 sm:p-4 flex flex-col min-h-[14rem] sm:min-h-[18rem] xl:min-h-0 xl:h-full overflow-visible xl:overflow-hidden">
                                     <div className="flex items-center justify-between mb-3 sm:mb-4 shrink-0 gap-2">
                                         <h3 className="text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.18em] sm:tracking-[0.2em] text-[#444748] flex items-center gap-2 min-w-0">
