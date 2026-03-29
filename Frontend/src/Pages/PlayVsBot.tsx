@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Chess, type Square } from "chess.js";
+import { Chess, type Move, type Square } from "chess.js";
 import { motion, AnimatePresence } from "framer-motion";
 import ChessBoard from "../components/ChessBoard";
 import MatchConclusionModal from "../components/game/MatchConclusionModal";
@@ -63,8 +63,14 @@ type MatchConclusion = {
   detail: string;
 };
 
+type BotTurnSnapshot = {
+  fen: string;
+  moveHistory: MoveHistoryEntry[];
+  lastMove: LastMove;
+};
+
 type PersistedBotGameSnapshot = {
-  version: 1;
+  version: 2;
   savedAt: string;
   userScope: string;
   fen: string;
@@ -72,6 +78,9 @@ type PersistedBotGameSnapshot = {
   difficulty: BotDifficulty;
   moveHistory: MoveHistoryEntry[];
   lastMove: LastMove;
+  undoStack: BotTurnSnapshot[];
+  redoStack: BotTurnSnapshot[];
+  pendingTurnStartSnapshot: BotTurnSnapshot | null;
   phase: "playing";
 };
 
@@ -89,7 +98,7 @@ const DEFAULT_MATCH_CONCLUSION: MatchConclusion = {
   detail: "",
 };
 
-const BOT_GAME_SNAPSHOT_VERSION = 1 as const;
+const BOT_GAME_SNAPSHOT_VERSION = 2 as const;
 const BOT_GAME_STORAGE_PREFIX = "chess.bot-game";
 
 const COLOR_OPTIONS: { value: SetupColor; label: string; description: string; image: string }[] = [
@@ -165,6 +174,18 @@ const isValidMoveHistoryEntry = (value: unknown): value is MoveHistoryEntry => {
   );
 };
 
+const isValidBotTurnSnapshot = (value: unknown): value is BotTurnSnapshot => {
+  if (!value || typeof value !== "object") return false;
+
+  const snapshot = value as Record<string, unknown>;
+  return (
+    typeof snapshot.fen === "string" &&
+    Array.isArray(snapshot.moveHistory) &&
+    snapshot.moveHistory.every(isValidMoveHistoryEntry) &&
+    isValidLastMove(snapshot.lastMove)
+  );
+};
+
 const isPersistedBotGameSnapshot = (value: unknown): value is PersistedBotGameSnapshot => {
   if (!value || typeof value !== "object") return false;
 
@@ -179,7 +200,12 @@ const isPersistedBotGameSnapshot = (value: unknown): value is PersistedBotGameSn
     snapshot.phase === "playing" &&
     Array.isArray(snapshot.moveHistory) &&
     snapshot.moveHistory.every(isValidMoveHistoryEntry) &&
-    isValidLastMove(snapshot.lastMove)
+    isValidLastMove(snapshot.lastMove) &&
+    Array.isArray(snapshot.undoStack) &&
+    snapshot.undoStack.every(isValidBotTurnSnapshot) &&
+    Array.isArray(snapshot.redoStack) &&
+    snapshot.redoStack.every(isValidBotTurnSnapshot) &&
+    (snapshot.pendingTurnStartSnapshot === null || isValidBotTurnSnapshot(snapshot.pendingTurnStartSnapshot))
   );
 };
 
@@ -271,6 +297,11 @@ function PlayVsBot() {
   const difficultyRef = useRef<BotDifficulty>("medium");
   const desktopHistoryRef = useRef<HTMLDivElement | null>(null);
   const restoredBotTurnRef = useRef(false);
+  const pendingTurnStartSnapshotRef = useRef<BotTurnSnapshot | null>(null);
+  const moveHistoryRef = useRef<MoveHistoryEntry[]>([]);
+  const lastMoveRef = useRef<LastMove>(null);
+  const undoStackRef = useRef<BotTurnSnapshot[]>([]);
+  const redoStackRef = useRef<BotTurnSnapshot[]>([]);
 
   const [setupColor, setSetupColor] = useState<SetupColor>("random");
   const [difficulty, setDifficulty] = useState<BotDifficulty>("medium");
@@ -288,10 +319,27 @@ function PlayVsBot() {
   const [pendingPromotion, setPendingPromotion] = useState<PendingPromotion>(DEFAULT_PENDING_PROMOTION);
   const [moveHistory, setMoveHistory] = useState<MoveHistoryEntry[]>([]);
   const [matchConclusion, setMatchConclusion] = useState<MatchConclusion>(DEFAULT_MATCH_CONCLUSION);
+  const [undoStack, setUndoStack] = useState<BotTurnSnapshot[]>([]);
+  const [redoStack, setRedoStack] = useState<BotTurnSnapshot[]>([]);
+  const [pendingTurnStartSnapshot, setPendingTurnStartSnapshot] = useState<BotTurnSnapshot | null>(null);
 
   const difficultyPreset = BOT_DIFFICULTY_PRESETS[difficulty];
   const latestMovePly = moveHistory.at(-1)?.ply ?? null;
   const isHumanTurn = currentTurn === (humanColor === "white" ? "w" : "b");
+  const minimumUndoPly = humanColor === "white" ? 2 : 3;
+  const canUndo =
+    phase === "playing" &&
+    !botThinking &&
+    !pendingPromotion.isOpen &&
+    !matchConclusion.isOpen &&
+    isHumanTurn &&
+    moveHistory.length >= minimumUndoPly;
+  const canRedo =
+    phase === "playing" &&
+    !botThinking &&
+    !pendingPromotion.isOpen &&
+    !matchConclusion.isOpen &&
+    redoStack.length > 0;
   const playerName = session?.user?.name?.split(' ')[0] || "Player";
   const sessionUserScope = useMemo(() => {
     if (session?.user && typeof session.user === "object" && "id" in session.user) {
@@ -320,6 +368,62 @@ function PlayVsBot() {
     setCheckedKingSquare(getCheckedKingSquare(chessRef.current));
   };
 
+  const createTurnSnapshot = (): BotTurnSnapshot => ({
+    fen: chessRef.current.fen(),
+    moveHistory: [...moveHistoryRef.current],
+    lastMove: lastMoveRef.current ? { ...lastMoveRef.current } : null,
+  });
+
+  const restoreTurnSnapshot = (
+    snapshot: BotTurnSnapshot,
+    options?: { autoResumeBotTurn?: boolean },
+  ) => {
+    const restoredChess = new Chess(snapshot.fen);
+
+    activeGameTokenRef.current += 1;
+    activeThinkTokenRef.current = 0;
+    restoredBotTurnRef.current =
+      options?.autoResumeBotTurn === true &&
+      restoredChess.turn() !== (humanColorRef.current === "white" ? "w" : "b");
+
+    chessRef.current = restoredChess;
+    setPhase("playing");
+    setBotThinking(false);
+    setPendingPromotion(DEFAULT_PENDING_PROMOTION);
+    setMatchConclusion(DEFAULT_MATCH_CONCLUSION);
+    updateMoveHistory(snapshot.moveHistory);
+    updateLastMove(snapshot.lastMove);
+    syncBoardStateFromChess();
+  };
+
+  const rebuildStateFromChessHistory = () => {
+    const verboseHistory = chessRef.current.history({ verbose: true }) as Move[];
+    updateMoveHistory(
+      verboseHistory.map((entry, index) => {
+        const ply = index + 1;
+        return {
+          ply,
+          san: entry.san,
+          color: entry.color === "w" ? "white" : "black",
+          moveNumber: Math.ceil(ply / 2),
+        };
+      }),
+    );
+
+    const lastAppliedMove = verboseHistory.at(-1);
+    updateLastMove(
+      lastAppliedMove
+        ? { from: lastAppliedMove.from as Square, to: lastAppliedMove.to as Square }
+        : null,
+    );
+
+    setPhase("playing");
+    setBotThinking(false);
+    setPendingPromotion(DEFAULT_PENDING_PROMOTION);
+    setMatchConclusion(DEFAULT_MATCH_CONCLUSION);
+    syncBoardStateFromChess();
+  };
+
   const clearPersistedBotGame = () => {
     if (typeof window === "undefined") return;
 
@@ -330,12 +434,55 @@ function PlayVsBot() {
     }
   };
 
+  const updateMoveHistory = (
+    value: MoveHistoryEntry[] | ((previous: MoveHistoryEntry[]) => MoveHistoryEntry[]),
+  ) => {
+    setMoveHistory((previous) => {
+      const nextValue = typeof value === "function" ? value(previous) : value;
+      moveHistoryRef.current = nextValue;
+      return nextValue;
+    });
+  };
+
+  const updateLastMove = (value: LastMove) => {
+    lastMoveRef.current = value;
+    setLastMove(value);
+  };
+
+  const updateUndoStack = (
+    value: BotTurnSnapshot[] | ((previous: BotTurnSnapshot[]) => BotTurnSnapshot[]),
+  ) => {
+    setUndoStack((previous) => {
+      const nextValue = typeof value === "function" ? value(previous) : value;
+      undoStackRef.current = nextValue;
+      return nextValue;
+    });
+  };
+
+  const updateRedoStack = (
+    value: BotTurnSnapshot[] | ((previous: BotTurnSnapshot[]) => BotTurnSnapshot[]),
+  ) => {
+    setRedoStack((previous) => {
+      const nextValue = typeof value === "function" ? value(previous) : value;
+      redoStackRef.current = nextValue;
+      return nextValue;
+    });
+  };
+
+  const updatePendingTurnStartSnapshot = (snapshot: BotTurnSnapshot | null) => {
+    pendingTurnStartSnapshotRef.current = snapshot;
+    setPendingTurnStartSnapshot(snapshot);
+  };
+
   const resetVisualState = () => {
-    setLastMove(null);
-    setMoveHistory([]);
+    updateLastMove(null);
+    updateMoveHistory([]);
     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
     setMatchConclusion(DEFAULT_MATCH_CONCLUSION);
     setCheckedKingSquare(null);
+    updateUndoStack([]);
+    updateRedoStack([]);
+    updatePendingTurnStartSnapshot(null);
   };
 
   const finalizeMatch = (
@@ -352,6 +499,7 @@ function PlayVsBot() {
     setCurrentTurn(null);
     activeThinkTokenRef.current = 0;
     restoredBotTurnRef.current = false;
+    updatePendingTurnStartSnapshot(null);
   };
 
   const applyMove = (
@@ -362,8 +510,8 @@ function PlayVsBot() {
     if (!appliedMove) return null;
 
     syncBoardStateFromChess();
-    setLastMove({ from: appliedMove.from as Square, to: appliedMove.to as Square });
-    setMoveHistory((previous) => {
+    updateLastMove({ from: appliedMove.from as Square, to: appliedMove.to as Square });
+    updateMoveHistory((previous) => {
       const ply = previous.length + 1;
       return [
         ...previous,
@@ -379,11 +527,19 @@ function PlayVsBot() {
 
     const conclusion = getMatchConclusionFromChess(chessRef.current, humanColorRef.current);
     if (conclusion) {
+      updatePendingTurnStartSnapshot(null);
       finalizeMatch(conclusion, { clearPersistedGame: true });
       return { move: appliedMove, isGameOver: true };
     }
 
-    if (actor === "bot") setBotThinking(false);
+    if (actor === "bot") {
+      setBotThinking(false);
+      if (pendingTurnStartSnapshotRef.current) {
+        updateUndoStack((previous) => [...previous, pendingTurnStartSnapshotRef.current!]);
+        updateRedoStack([]);
+        updatePendingTurnStartSnapshot(null);
+      }
+    }
 
     return { move: appliedMove, isGameOver: false };
   };
@@ -495,8 +651,11 @@ function PlayVsBot() {
       setHumanColor(parsedSnapshot.humanColor);
       setPhase("playing");
       setBotThinking(false);
-      setLastMove(parsedSnapshot.lastMove);
-      setMoveHistory(parsedSnapshot.moveHistory);
+      updateLastMove(parsedSnapshot.lastMove);
+      updateMoveHistory(parsedSnapshot.moveHistory);
+      updateUndoStack(parsedSnapshot.undoStack);
+      updateRedoStack(parsedSnapshot.redoStack);
+      updatePendingTurnStartSnapshot(parsedSnapshot.pendingTurnStartSnapshot);
       setPendingPromotion(DEFAULT_PENDING_PROMOTION);
       setMatchConclusion(DEFAULT_MATCH_CONCLUSION);
       syncBoardStateFromChess();
@@ -520,6 +679,9 @@ function PlayVsBot() {
       difficulty,
       moveHistory,
       lastMove,
+      undoStack,
+      redoStack,
+      pendingTurnStartSnapshot,
       phase: "playing",
     };
 
@@ -536,9 +698,12 @@ function PlayVsBot() {
     lastMove,
     matchConclusion.isOpen,
     moveHistory,
+    pendingTurnStartSnapshot,
     phase,
+    redoStack,
     sessionPending,
     sessionUserScope,
+    undoStack,
   ]);
 
   useEffect(() => {
@@ -562,6 +727,11 @@ function PlayVsBot() {
       activeThinkTokenRef.current = 0;
       adapter.terminate();
       engineRef.current = null;
+      moveHistoryRef.current = [];
+      lastMoveRef.current = null;
+      undoStackRef.current = [];
+      redoStackRef.current = [];
+      pendingTurnStartSnapshotRef.current = null;
     };
   }, []);
 
@@ -617,11 +787,16 @@ function PlayVsBot() {
   const handleMoveRequest = (move: { from: Square; to: Square; promotion?: PromotionPiece }) => {
     if (phase !== "playing" || botThinking || !isHumanTurn) return;
 
+    const turnStartSnapshot = createTurnSnapshot();
     const result = applyMove(move, "human");
     if (!result) return;
 
     if (!result.isGameOver) {
+      updatePendingTurnStartSnapshot(turnStartSnapshot);
+      updateRedoStack([]);
       void requestBotMove(activeGameTokenRef.current);
+    } else {
+      updatePendingTurnStartSnapshot(null);
     }
   };
 
@@ -659,6 +834,43 @@ function PlayVsBot() {
       },
       { clearPersistedGame: true },
     );
+  };
+
+  const handleUndo = async () => {
+    if (!canUndo) return;
+
+    await engineRef.current?.stopThinking();
+    const currentSnapshot = createTurnSnapshot();
+    const humanTurnSymbol = humanColorRef.current === "white" ? "w" : "b";
+    let undoneMoveCount = 0;
+
+    while (true) {
+      const undoneMove = chessRef.current.undo();
+      if (!undoneMove) break;
+
+      undoneMoveCount += 1;
+      if (chessRef.current.turn() === humanTurnSymbol) {
+        break;
+      }
+    }
+
+    if (undoneMoveCount === 0) return;
+
+    updateRedoStack((previous) => [...previous, currentSnapshot]);
+    updatePendingTurnStartSnapshot(null);
+    rebuildStateFromChessHistory();
+  };
+
+  const handleRedo = async () => {
+    if (!canRedo) return;
+
+    await engineRef.current?.stopThinking();
+    const targetSnapshot = redoStackRef.current.at(-1);
+    if (!targetSnapshot) return;
+
+    updateRedoStack((previous) => previous.slice(0, -1));
+    updatePendingTurnStartSnapshot(null);
+    restoreTurnSnapshot(targetSnapshot);
   };
 
   const getMoveHistoryRows = useMemo(() => {
@@ -1026,18 +1238,28 @@ function PlayVsBot() {
                     <div className="w-px h-4 sm:h-5 bg-white/10 mx-0.5" />
                     
                     <button
-                      disabled
-                      className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-white/5 bg-white/[0.02] text-[#8e9192] cursor-not-allowed opacity-40"
-                      aria-label="Undo unavailable"
-                      title="Undo coming soon"
+                      onClick={() => void handleUndo()}
+                      disabled={!canUndo}
+                      className={`inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border transition-all active:scale-95 ${
+                        canUndo
+                          ? "border-[#7b6747]/50 bg-[#44392a]/80 text-[#f3d58d] hover:bg-[#564731] hover:scale-105"
+                          : "border-white/5 bg-white/[0.02] text-[#8e9192] cursor-not-allowed opacity-40"
+                      }`}
+                      aria-label="Undo last turn"
+                      title={canUndo ? "Undo last turn" : "Undo unavailable"}
                     >
                       <Undo2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     </button>
                     <button
-                      disabled
-                      className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-white/5 bg-white/[0.02] text-[#8e9192] cursor-not-allowed opacity-40"
-                      aria-label="Undo unavailable"
-                      title="Redo coming soon"
+                      onClick={() => void handleRedo()}
+                      disabled={!canRedo}
+                      className={`inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border transition-all active:scale-95 ${
+                        canRedo
+                          ? "border-[#7b6747]/50 bg-[#44392a]/80 text-[#f3d58d] hover:bg-[#564731] hover:scale-105"
+                          : "border-white/5 bg-white/[0.02] text-[#8e9192] cursor-not-allowed opacity-40"
+                      }`}
+                      aria-label="Redo last turn"
+                      title={canRedo ? "Redo last turn" : "Redo unavailable"}
                     >
                       <Redo2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     </button>

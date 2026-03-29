@@ -1,11 +1,20 @@
 import { cleanupRuntimeGame, getQueuedFlushGameIds, getRuntimeGameSnapshot, markRuntimeGameFlushState, removeRuntimeGameFromFlushQueue, scheduleRuntimeGameFlush } from "./runtimeGameStore.js";
 import { finishGame, saveMovesBatch } from "./gameStore.js";
 
-const FLUSH_POLL_INTERVAL_MS = 1_000;
+export const ACTIVE_FLUSH_POLL_INTERVAL_MS = 3_000;
+export const IDLE_FLUSH_POLL_INTERVAL_MS = 15_000;
 const MAX_FLUSH_RETRY_DELAY_MS = 30_000;
 
 function getRetryDelay(attempts: number) {
     return Math.min(2 ** Math.max(attempts, 0) * 1_000, MAX_FLUSH_RETRY_DELAY_MS);
+}
+
+export function getNextFlushPollDelayMs(hasQueuedGames: boolean) {
+    return hasQueuedGames ? ACTIVE_FLUSH_POLL_INTERVAL_MS : IDLE_FLUSH_POLL_INTERVAL_MS;
+}
+
+function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function startRuntimeGameFlusher() {
@@ -17,16 +26,17 @@ export function startRuntimeGameFlusher() {
                 const gameIds = await getQueuedFlushGameIds();
 
                 if (gameIds.length === 0) {
-                    await new Promise((resolve) => setTimeout(resolve, FLUSH_POLL_INTERVAL_MS));
+                    await sleep(getNextFlushPollDelayMs(false));
                     continue;
                 }
 
                 for (const gameId of gameIds) {
                     await flushRuntimeGame(gameId);
                 }
+                await sleep(getNextFlushPollDelayMs(true));
             } catch (error) {
                 console.error("Runtime game flusher error:", error);
-                await new Promise((resolve) => setTimeout(resolve, FLUSH_POLL_INTERVAL_MS));
+                await sleep(ACTIVE_FLUSH_POLL_INTERVAL_MS);
             }
         }
     };
