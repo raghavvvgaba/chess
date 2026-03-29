@@ -164,6 +164,8 @@ function Game() {
     const roomCode = normalizeRoomCode(searchParams.get("room"));
     const initialGameData = (location.state as { initialGameData?: unknown } | null)?.initialGameData;
     const chessRef = useRef(new Chess());
+    const moveAudioRef = useRef<HTMLAudioElement | null>(null);
+    const captureAudioRef = useRef<HTMLAudioElement | null>(null);
     const [board, setBoard] = useState(chessRef.current.board());
     const [gameState, setGameState] = useState<GameState>("idle");
     const [statusMessage, setStatusMessage] = useState<string>("");
@@ -191,6 +193,17 @@ function Game() {
     const latestSocketRef = useRef<WebSocket | null>(null);
     const attachedSocketRef = useRef<WebSocket | null>(null);
     const attachedConnectionVersionRef = useRef(0);
+
+    const playSound = (type: "move" | "capture") => {
+        const audio = type === "capture" ? captureAudioRef.current : moveAudioRef.current;
+        if (!audio) {
+            return;
+        }
+        audio.currentTime = 0;
+        void audio.play().catch(() => {
+            // Ignore autoplay failures until the user interacts with the page.
+        });
+    };
 
     const initializeGameFromPayload = (payload: any) => {
         attachedSocketRef.current = socket;
@@ -220,6 +233,16 @@ function Game() {
         setQuitRequested(false);
         setQuitDialogOpen(false);
     };
+
+    useEffect(() => {
+        moveAudioRef.current = new Audio("/move.wav");
+        captureAudioRef.current = new Audio("/capture.wav");
+
+        return () => {
+            moveAudioRef.current = null;
+            captureAudioRef.current = null;
+        };
+    }, []);
 
     useEffect(() => {
         if (initialGameData) {
@@ -413,6 +436,9 @@ function Game() {
                     }
                     setStatusMessage("");
                     setPendingPromotion(DEFAULT_PENDING_PROMOTION);
+                    if (typeof message.payload?.san === "string") {
+                        playSound(message.payload.san.includes("x") ? "capture" : "move");
+                    }
                     if (
                         typeof message.payload?.move?.from === "string" &&
                         typeof message.payload?.move?.to === "string"
@@ -944,7 +970,7 @@ function Game() {
             <div className="bot-page__mesh" aria-hidden />
 
             <main className="flex-1 relative z-10 h-screen overflow-y-auto px-3 pt-16 pb-4 sm:px-4 md:px-8 md:py-6 lg:px-12 lg:py-8 xl:overflow-hidden flex flex-col">
-                <div className="max-w-7xl mx-auto w-full xl:flex-1 flex flex-col xl:min-h-0">
+                <div className="max-w-[1500px] mx-auto w-full xl:flex-1 flex flex-col xl:min-h-0">
                     <div className="relative xl:flex-1 xl:min-h-0 grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-6 xl:gap-8 items-start xl:items-stretch py-2 animate-in fade-in duration-500">
                         {/* Left Column: Board */}
                         <div className="xl:col-span-8 w-full max-w-2xl xl:max-w-none mx-auto flex flex-col gap-3 sm:gap-4 xl:min-h-0">
@@ -969,7 +995,7 @@ function Game() {
 
                             {/* Board Container */}
                             <div className="flex-none xl:flex-1 xl:min-h-0 flex items-center justify-center">
-                                <div className="w-full aspect-square max-w-[min(100%,calc(100svh-12rem))] sm:max-w-[min(100%,calc(100svh-24rem))] md:max-w-[min(100%,calc(100svh-22rem))] xl:max-w-[min(100%,calc(100svh-18rem))] glass-obsidian border border-white/10 p-1 sm:p-1.5 md:p-2 rounded-2xl shadow-2xl relative">
+                                <div className="w-full aspect-square max-w-[min(100%,calc(100svh-12rem))] sm:max-w-[min(100%,calc(100svh-24rem))] md:max-w-[min(100%,calc(100svh-22rem))] xl:max-w-[min(100%,calc(100svh-13rem),52vw)] 2xl:max-w-[min(100%,calc(100svh-11rem),56vw)] glass-obsidian border border-white/10 p-1 sm:p-1.5 md:p-2 rounded-2xl shadow-2xl relative">
                                     <div className="absolute inset-0 bg-gradient-to-br from-[#e9c176]/5 to-transparent pointer-events-none rounded-2xl" />
                                     <ChessBoard
                                         board={board}

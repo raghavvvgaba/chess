@@ -291,6 +291,8 @@ function PlayVsBot() {
 
   const chessRef = useRef(new Chess());
   const engineRef = useRef<StockfishAdapter | null>(null);
+  const moveAudioRef = useRef<HTMLAudioElement | null>(null);
+  const captureAudioRef = useRef<HTMLAudioElement | null>(null);
   const activeGameTokenRef = useRef(0);
   const activeThinkTokenRef = useRef(0);
   const humanColorRef = useRef<ActiveColor>("white");
@@ -352,6 +354,16 @@ function PlayVsBot() {
     return "guest";
   }, [session]);
   const activeStorageKey = useMemo(() => getBotGameStorageKey(sessionUserScope), [sessionUserScope]);
+
+  const playSound = (type: "move" | "capture") => {
+    const audio = type === "capture" ? captureAudioRef.current : moveAudioRef.current;
+    if (!audio) return;
+
+    audio.currentTime = 0;
+    void audio.play().catch(() => {
+      // Ignore autoplay failures until the player interacts with the page.
+    });
+  };
   
   const promotionChoices = (["q", "r", "b", "n"] as PromotionPiece[])
     .filter((piece) => pendingPromotion.availablePromotions.includes(piece))
@@ -360,6 +372,16 @@ function PlayVsBot() {
       label: getPromotionLabel(piece),
       imageSrc: `/Pieces/${humanColor === "black" ? piece : `w${piece}`}.png`,
     }));
+
+  useEffect(() => {
+    moveAudioRef.current = new Audio("/move.wav");
+    captureAudioRef.current = new Audio("/capture.wav");
+
+    return () => {
+      moveAudioRef.current = null;
+      captureAudioRef.current = null;
+    };
+  }, []);
 
   const syncBoardStateFromChess = () => {
     setBoard(chessRef.current.board());
@@ -509,6 +531,7 @@ function PlayVsBot() {
     const appliedMove = chessRef.current.move(move);
     if (!appliedMove) return null;
 
+    playSound(typeof appliedMove.captured === "string" ? "capture" : "move");
     syncBoardStateFromChess();
     updateLastMove({ from: appliedMove.from as Square, to: appliedMove.to as Square });
     updateMoveHistory((previous) => {
@@ -890,7 +913,7 @@ function PlayVsBot() {
       <div className="bot-page__mesh" aria-hidden />
       
       <main className="flex-1 relative z-10 h-screen overflow-y-auto px-3 pt-16 pb-4 sm:px-4 md:px-8 md:py-6 lg:px-12 lg:py-8 xl:overflow-hidden flex flex-col">
-        <div className="max-w-7xl mx-auto w-full xl:flex-1 flex flex-col xl:min-h-0">
+        <div className="max-w-[1500px] mx-auto w-full xl:flex-1 flex flex-col xl:min-h-0">
           {phase === "setup" ? (
             <div className="flex-1 flex flex-col justify-center py-6 sm:py-8 overflow-y-auto custom-scrollbar">
               <AnimatePresence mode="wait">
@@ -1172,7 +1195,7 @@ function PlayVsBot() {
 
                 {/* Board Container */}
                 <div className="flex-none xl:flex-1 xl:min-h-0 flex items-center justify-center">
-                  <div className="w-full aspect-square max-w-[min(100%,calc(100svh-12rem))] sm:max-w-[min(100%,calc(100svh-24rem))] md:max-w-[min(100%,calc(100svh-22rem))] xl:max-w-[min(100%,calc(100svh-18rem))] glass-obsidian border border-white/10 p-1 sm:p-1.5 md:p-2 rounded-2xl shadow-2xl relative">
+                  <div className="w-full aspect-square max-w-[min(100%,calc(100svh-12rem))] sm:max-w-[min(100%,calc(100svh-24rem))] md:max-w-[min(100%,calc(100svh-22rem))] xl:max-w-[min(100%,calc(100svh-13rem),52vw)] 2xl:max-w-[min(100%,calc(100svh-11rem),56vw)] glass-obsidian border border-white/10 p-1 sm:p-1.5 md:p-2 rounded-2xl shadow-2xl relative">
                     <div className="absolute inset-0 bg-gradient-to-br from-[#e9c176]/5 to-transparent pointer-events-none rounded-2xl" />
                     <ChessBoard
                       board={board}

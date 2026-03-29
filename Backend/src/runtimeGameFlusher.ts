@@ -2,7 +2,7 @@ import { cleanupRuntimeGame, getQueuedFlushGameIds, getRuntimeGameSnapshot, mark
 import { finishGame, saveMovesBatch } from "./gameStore.js";
 
 export const ACTIVE_FLUSH_POLL_INTERVAL_MS = 3_000;
-export const IDLE_FLUSH_POLL_INTERVAL_MS = 15_000;
+export const IDLE_FLUSH_POLL_INTERVAL_MS = 60_000;
 const MAX_FLUSH_RETRY_DELAY_MS = 30_000;
 
 function getRetryDelay(attempts: number) {
