@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowLeft, Mail, Lock, User, Eye, EyeOff } from "lucide-react";
 import { authClient } from "../lib/auth-client";
 import LoadingState from "../components/LoadingState";
 
@@ -24,9 +26,6 @@ function AuthPage() {
     }, [navigate, session?.user?.id]);
 
     const isSignUp = mode === "sign-up";
-    const emailInputId = isSignUp ? "signup-email" : "signin-email";
-    const passwordInputId = isSignUp ? "signup-password" : "signin-password";
-    const passwordHintId = isSignUp ? "signup-password-hint" : "signin-password-hint";
 
     const switchMode = (nextMode: AuthMode) => {
         setMode(nextMode);
@@ -84,165 +83,243 @@ function AuthPage() {
     }
 
     return (
-        <main className="auth-page relative min-h-dvh overflow-hidden text-white">
-            <div className="auth-page__mesh" aria-hidden />
-
-            <div className="relative z-10 mx-auto w-full max-w-6xl px-4 pb-8 pt-5 sm:px-6 lg:px-10">
-                <button
-                    type="button"
-                    onClick={() => navigate("/")}
-                    className="rounded-full border border-[#f6f2e8]/22 bg-[#201d18]/75 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#f2e4cd] transition hover:border-[#d2a572]/60"
-                >
-                    ← Back Home
-                </button>
+        <main className="relative min-h-dvh w-full overflow-hidden bg-black text-white selection:bg-[#d2a572]/30 selection:text-[#d2a572]">
+            {/* Background Image for Mobile/Tablet */}
+            <div className="absolute inset-0 z-0 lg:hidden">
+                <img 
+                    src="/ChessAuthImage.jpg" 
+                    alt="Background" 
+                    className="h-full w-full object-cover grayscale-[20%]"
+                />
+                <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/70 to-black z-10" />
             </div>
 
-            <section className="relative z-10 mx-auto grid w-full max-w-6xl gap-8 px-4 pb-10 sm:px-6 lg:grid-cols-[1fr_520px] lg:items-start lg:px-10">
-                <aside className="hidden lg:block">
-                    <p className="inline-flex rounded-full border border-[#d2a572]/45 bg-[#d2a572]/12 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[#edc998]">
-                        Account Access
-                    </p>
-                    <h1 className="mt-5 font-display text-5xl leading-[1.04] text-[#fff4e2]">
-                        Step In.
-                        <span className="block text-[#d2a572]">Set The Board.</span>
-                    </h1>
-                    <p className="mt-5 max-w-lg text-base text-[#efe3d2]/82">
-                        Sign in to resume your matches or create a new account in less than a minute.
-                        Your board, history, and sessions stay tied to one secure login.
-                    </p>
-                    <ul className="mt-7 space-y-3 text-sm text-[#f4e4cc]">
-                        <li className="rounded-xl border border-[#f6f2e8]/10 bg-[#1e1a15]/70 px-4 py-3">Email + Google sign-in options</li>
-                        <li className="rounded-xl border border-[#f6f2e8]/10 bg-[#1e1a15]/70 px-4 py-3">Optimized for mobile and desktop screens</li>
-                        <li className="rounded-xl border border-[#f6f2e8]/10 bg-[#1e1a15]/70 px-4 py-3">Fast redirect into your game room</li>
-                    </ul>
-                </aside>
+            {/* Back Button */}
+            <motion.div 
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="fixed top-6 left-6 z-50"
+            >
+                <button
+                    onClick={() => navigate("/")}
+                    className="group flex items-center gap-2 rounded-full border border-white/10 bg-black/40 backdrop-blur-md px-4 py-2 text-xs font-bold uppercase tracking-widest text-[#f2e4cd] transition-all hover:border-[#d2a572]/50 hover:bg-black/60"
+                >
+                    <ArrowLeft className="h-3 w-3 transition-transform group-hover:-translate-x-1" />
+                    Back Home
+                </button>
+            </motion.div>
 
-                <section className="rounded-2xl border border-[#f6f2e8]/16 bg-[#181511]/86 p-5 shadow-[0_30px_50px_rgba(0,0,0,0.45)] backdrop-blur-sm sm:p-7">
-                    <header className="mb-5">
-                        <h2 className="font-display text-3xl text-[#fff3e1]">{isSignUp ? "Create your account" : "Welcome back"}</h2>
-                        <p className="mt-2 text-sm text-[#e8d8be]/82">
-                            {isSignUp ? "Start playing online matches today." : "Sign in to continue to your board."}
-                        </p>
-                    </header>
-
-                    <div className="mb-5 grid grid-cols-2 gap-2 rounded-xl border border-[#f6f2e8]/10 bg-[#211d18] p-1">
-                        <button
-                            type="button"
-                            onClick={() => switchMode("sign-in")}
-                            className={`rounded-lg px-3 py-2.5 text-sm font-semibold transition ${!isSignUp ? "bg-[#d2a572] text-[#19140f]" : "text-[#d7c6ae] hover:bg-[#2b2620]"}`}
-                            aria-pressed={!isSignUp}
+            <div className="relative z-10 grid min-h-dvh w-full lg:grid-cols-2">
+                {/* Left Side: Cinematic Branding (Desktop Only) */}
+                <section className="hidden lg:relative lg:flex lg:flex-col lg:items-center lg:justify-center lg:p-12 overflow-hidden border-r border-white/5">
+                    <img 
+                        src="/ChessAuthImage.jpg" 
+                        alt="Chess Theme" 
+                        className="absolute inset-0 h-full w-full object-cover grayscale-[10%]"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-black/40 z-10" />
+                    
+                    <div className="relative z-20 text-center max-w-lg">
+                        <motion.h2 
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="font-display text-5xl font-black tracking-tighter text-[#fff4e2] mb-6"
                         >
-                            Sign in
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => switchMode("sign-up")}
-                            className={`rounded-lg px-3 py-2.5 text-sm font-semibold transition ${isSignUp ? "bg-[#d2a572] text-[#19140f]" : "text-[#d7c6ae] hover:bg-[#2b2620]"}`}
-                            aria-pressed={isSignUp}
+                            The Strategy <br />
+                            <span className="text-[#d2a572]">Continues.</span>
+                        </motion.h2>
+                        <motion.p 
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.1 }}
+                            className="text-lg text-[#d2a572]/60 font-light tracking-wide leading-relaxed"
                         >
-                            Sign up
-                        </button>
+                            Join the ranks of the elite. Every move is recorded, every victory celebrated in the Grandmaster's Ledger.
+                        </motion.p>
                     </div>
 
-                    <form className="space-y-4" onSubmit={handleSubmit}>
-                        {isSignUp && (
-                            <div>
-                                <label htmlFor="signup-name" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#eadbc4]">
-                                    Full Name
-                                </label>
-                                <input
-                                    id="signup-name"
-                                    type="text"
-                                    name="name"
-                                    autoComplete="name"
-                                    value={name}
-                                    onChange={(event) => setName(event.target.value)}
-                                    placeholder="Your name"
-                                    className="w-full rounded-xl border border-[#5d5346] bg-[#241f19] px-3.5 py-3 text-white outline-none transition focus:border-[#d2a572] focus:ring-2 focus:ring-[#d2a572]/30"
-                                    required
-                                />
-                            </div>
-                        )}
+                    {/* HUD Decorative Corners */}
+                    <div className="absolute top-10 left-10 w-20 h-20 border-l border-t border-[#d2a572]/20 z-20" />
+                    <div className="absolute bottom-10 right-10 w-20 h-20 border-r border-b border-[#d2a572]/20 z-20" />
+                </section>
 
-                        <div>
-                            <label htmlFor={emailInputId} className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#eadbc4]">
-                                Email
-                            </label>
-                            <input
-                                id={emailInputId}
-                                type="email"
-                                name={isSignUp ? "email" : "username"}
-                                autoComplete={isSignUp ? "email" : "username"}
-                                value={email}
-                                onChange={(event) => setEmail(event.target.value)}
-                                placeholder="you@example.com"
-                                className="w-full rounded-xl border border-[#5d5346] bg-[#241f19] px-3.5 py-3 text-white outline-none transition focus:border-[#d2a572] focus:ring-2 focus:ring-[#d2a572]/30"
-                                required
-                            />
-                        </div>
+                {/* Right Side: Auth Component */}
+                <section className="flex flex-col items-center justify-center p-6 sm:p-12 lg:bg-[#0a0a0a]">
+                    <div className="w-full max-w-md sm:max-w-xl lg:max-w-md">
+                        {/* Mobile Header (Hidden on Desktop) */}
+                        <motion.header 
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="text-center mb-10 lg:hidden"
+                        >
+                            
+                        </motion.header>
 
-                        <div>
-                            <div className="mb-1.5 flex items-center justify-between">
-                                <label htmlFor={passwordInputId} className="block text-xs font-semibold uppercase tracking-[0.12em] text-[#eadbc4]">
-                                    Password
-                                </label>
+                        {/* Auth Card */}
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="rounded-3xl border border-white/10 bg-black/40 lg:bg-transparent p-8 sm:p-10 backdrop-blur-xl lg:backdrop-blur-none"
+                        >
+                            <header className="mb-8 hidden lg:block">
+                                <h3 className="font-display text-3xl font-bold text-white mb-2">{isSignUp ? "Create Account" : "Welcome Back"}</h3>
+                                
+                            </header>
+
+                            {/* Tab Switcher */}
+                            <div className="mb-8 grid grid-cols-2 gap-2 rounded-2xl border border-white/5 bg-white/5 p-1.5">
                                 <button
-                                    type="button"
-                                    onClick={() => setShowPassword((previous) => !previous)}
-                                    className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#f0d6b4] hover:text-[#ffe7c8]"
+                                    onClick={() => switchMode("sign-in")}
+                                    className={`relative rounded-xl px-4 py-2.5 text-sm font-bold tracking-wide transition-all ${
+                                        !isSignUp ? "text-[#19140f]" : "text-[#d7c6ae] hover:bg-white/5"
+                                    }`}
                                 >
-                                    {showPassword ? "Hide" : "Show"}
+                                    {!isSignUp && (
+                                        <motion.div 
+                                            layoutId="active-tab"
+                                            className="absolute inset-0 rounded-xl bg-[#d2a572]"
+                                            transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                        />
+                                    )}
+                                    <span className="relative z-10">Sign In</span>
+                                </button>
+                                <button
+                                    onClick={() => switchMode("sign-up")}
+                                    className={`relative rounded-xl px-4 py-2.5 text-sm font-bold tracking-wide transition-all ${
+                                        isSignUp ? "text-[#19140f]" : "text-[#d7c6ae] hover:bg-white/5"
+                                    }`}
+                                >
+                                    {isSignUp && (
+                                        <motion.div 
+                                            layoutId="active-tab"
+                                            className="absolute inset-0 rounded-xl bg-[#d2a572]"
+                                            transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                        />
+                                    )}
+                                    <span className="relative z-10">Sign Up</span>
                                 </button>
                             </div>
-                            <input
-                                id={passwordInputId}
-                                type={showPassword ? "text" : "password"}
-                                name="password"
-                                autoComplete={isSignUp ? "new-password" : "current-password"}
-                                value={password}
-                                onChange={(event) => setPassword(event.target.value)}
-                                placeholder={isSignUp ? "Create a secure password" : "Enter your password"}
-                                className="w-full rounded-xl border border-[#5d5346] bg-[#241f19] px-3.5 py-3 text-white outline-none transition focus:border-[#d2a572] focus:ring-2 focus:ring-[#d2a572]/30"
-                                required
-                                minLength={8}
-                                aria-describedby={passwordHintId}
-                            />
-                            <p id={passwordHintId} className="mt-1.5 text-xs text-[#d1bea1]/85">
-                                {isSignUp ? "Use at least 8 characters." : "Use your existing account password."}
-                            </p>
-                        </div>
 
-                        {errorMessage && (
-                            <p className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-                                {errorMessage}
-                            </p>
-                        )}
+                            <form className="space-y-5" onSubmit={handleSubmit}>
+                                <AnimatePresence mode="wait">
+                                    {isSignUp && (
+                                        <motion.div
+                                            key="signup-name"
+                                            initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                                            animate={{ opacity: 1, height: "auto", marginBottom: 20 }}
+                                            exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                                            transition={{ duration: 0.3 }}
+                                        >
+                                            <label className="mb-2 block text-[11px] font-bold uppercase tracking-[0.15em] text-[#eadbc4]/80">
+                                                Full Name
+                                            </label>
+                                            <div className="relative group">
+                                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#eadbc4]/40 group-focus-within:text-[#d2a572] transition-colors">
+                                                    <User className="h-4.5 w-4.5" />
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    value={name}
+                                                    onChange={(e) => setName(e.target.value)}
+                                                    placeholder="Your name"
+                                                    className="w-full rounded-2xl border border-white/10 bg-white/5 pl-12 pr-4 py-4 text-white outline-none transition-all focus:border-[#d2a572]/60 focus:ring-4 focus:ring-[#d2a572]/5"
+                                                    required={isSignUp}
+                                                />
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
 
-                        <button
-                            type="submit"
-                            disabled={isSubmitting}
-                            className="w-full rounded-xl bg-[#d2a572] px-3 py-3 font-extrabold uppercase tracking-[0.08em] text-[#18130e] transition hover:bg-[#e1b983] disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                            {isSubmitting ? "Please wait..." : isSignUp ? "Create account" : "Sign in"}
-                        </button>
-                    </form>
+                                <div>
+                                    <label className="mb-2 block text-[11px] font-bold uppercase tracking-[0.15em] text-[#eadbc4]/80">
+                                        Email Address
+                                    </label>
+                                    <div className="relative group">
+                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#eadbc4]/40 group-focus-within:text-[#d2a572] transition-colors">
+                                            <Mail className="h-4.5 w-4.5" />
+                                        </div>
+                                        <input
+                                            type="email"
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            placeholder="you@example.com"
+                                            className="w-full rounded-2xl border border-white/10 bg-white/5 pl-12 pr-4 py-4 text-white outline-none transition-all focus:border-[#d2a572]/60 focus:ring-4 focus:ring-[#d2a572]/5"
+                                            required
+                                        />
+                                    </div>
+                                </div>
 
-                    <div className="my-5 flex items-center gap-3">
-                        <div className="h-px flex-1 bg-[#f6f2e8]/16" />
-                        <span className="text-xs uppercase tracking-[0.16em] text-[#dfccb0]/80">or</span>
-                        <div className="h-px flex-1 bg-[#f6f2e8]/16" />
+                                <div>
+                                    <div className="mb-2 flex items-center justify-between">
+                                        <label className="block text-[11px] font-bold uppercase tracking-[0.15em] text-[#eadbc4]/80">
+                                            Password
+                                        </label>
+                                    </div>
+                                    <div className="relative group">
+                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#eadbc4]/40 group-focus-within:text-[#d2a572] transition-colors">
+                                            <Lock className="h-4.5 w-4.5" />
+                                        </div>
+                                        <input
+                                            type={showPassword ? "text" : "password"}
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            placeholder={isSignUp ? "Create a secure password" : "Enter your password"}
+                                            className="w-full rounded-2xl border border-white/10 bg-white/5 pl-12 pr-12 py-4 text-white outline-none transition-all focus:border-[#d2a572]/60 focus:ring-4 focus:ring-[#d2a572]/5"
+                                            required
+                                            minLength={8}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                            className="absolute right-4 top-1/2 -translate-y-1/2 text-[#eadbc4]/40 hover:text-[#d2a572] transition-colors"
+                                        >
+                                            {showPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {errorMessage && (
+                                    <motion.p 
+                                        initial={{ opacity: 0, y: -10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-semibold text-red-400 text-center"
+                                    >
+                                        {errorMessage}
+                                    </motion.p>
+                                )}
+
+                                <button
+                                    type="submit"
+                                    disabled={isSubmitting}
+                                    className="w-full rounded-2xl bg-[#d2a572] py-4 font-black uppercase tracking-[0.12em] text-[#18130e] shadow-lg shadow-[#d2a572]/10 transition-all hover:bg-[#e1b983] hover:scale-[1.01] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {isSubmitting ? "Processing..." : isSignUp ? "Create Account" : "Initialize Session"}
+                                </button>
+                            </form>
+
+                            <div className="relative my-8">
+                                <div className="absolute inset-0 flex items-center">
+                                    <div className="w-full border-t border-white/5" />
+                                </div>
+                                <div className="relative flex justify-center text-xs uppercase tracking-[0.2em]">
+                                    <span className="bg-[#0a0a0a] px-4 text-[#dfccb0]/40">or connect with</span>
+                                </div>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={handleGoogleSignIn}
+                                className="flex items-center justify-center gap-3 w-full rounded-2xl border border-white/5 bg-white/5 py-4 font-bold text-[#f7edde] transition-all hover:border-[#d2a572]/40 hover:bg-white/10 hover:scale-[1.01] active:scale-[0.98]"
+                            >
+                                <img src="/google.svg" alt="" className="h-5 w-5" />
+                                Continue with Google
+                            </button>
+
+                         
+                        </motion.div>
                     </div>
-
-                    <button
-                        type="button"
-                        onClick={handleGoogleSignIn}
-                        className="inline-flex w-full items-center justify-center gap-3 rounded-xl border border-[#f6f2e8]/20 bg-[#1f1b16] px-3 py-3 font-semibold text-[#f7edde] transition hover:border-[#d2a572]/45 hover:bg-[#27211a]"
-                    >
-                        <img src="/google.svg" alt="" className="h-5 w-5" />
-                        Continue with Google
-                    </button>
                 </section>
-            </section>
+            </div>
         </main>
     );
 }
